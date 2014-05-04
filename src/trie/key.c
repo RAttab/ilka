@@ -68,6 +68,13 @@ void trie_key_free(struct trie_key *key)
     trie_key_init(key);
 }
 
+void trie_key_reset(struct trie_key *key)
+{
+    key->size = 0;
+    key->last = &chunk;
+    memset(key->chunk, 0, TRIE_KEY_CHUNK_SIZE);
+}
+
 void trie_key_copy(restrict struct trie_key *key, restrict struct trie_key *other)
 {
     key->size = other->size;
@@ -196,7 +203,8 @@ int trie_key_consume(struct trie_key_it *it, uint64_t data, size_t bits)
 // -----------------------------------------------------------------------------
 
 
-void trie_key_append_bytes(struct trie_key *key, const uint8_t *src, size_t n)
+void trie_key_append_bytes(
+        struct trie_key *key, restrict const uint8_t *src, size_t n)
 {
     if (!n) return;
 
@@ -237,7 +245,8 @@ void trie_key_append_word(struct trie_key *key, uint64_t data)
 // extract
 // -----------------------------------------------------------------------------
 
-struct trie_key_it trie_key_extract_bytes(struct trie_key_it it, uint8_t *data, size_t n)
+struct trie_key_it trie_key_extract_bytes(
+        struct trie_key_it it, restrict uint8_t *data, size_t n)
 {
     if (it.pos % 8)
         ilka_error("extracting from misaligned key iterator <%lu>", it.pos);

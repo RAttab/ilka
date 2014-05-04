@@ -10,7 +10,6 @@
 #include <stdint.h>
 
 
-
 // key
 // -----------------------------------------------------------------------------
 
@@ -31,20 +30,21 @@ struct trie_key_chunk
 
 struct trie_key
 {
-    size_t size; // byte-level granularity.
+    size_t size; // bytes
     struct trie_key_chunk *last;
     struct trie_key_chunk chunk;
 };
 
 struct trie_key_it
 {
-    size_t pos; // bit-level granularity;
+    size_t pos; // bits
     struct trie_key *key;
     struct trie_key_chunk *chunk;
 };
 
 void trie_key_init(struct trie_key *key);
 void trie_key_free(struct trie_key *key);
+void trie_key_reset(struct trie_key *key);
 void trie_key_copy(restrict struct trie_key *key, restrict struct trie_key *other);
 
 int trie_key_end(struct trie_key_it it);
@@ -58,9 +58,11 @@ int trie_key_consume(struct trie_key_it *it, uint64_t data, size_t bits);
 void trie_key_append_16(struct trie_key *key, uint16_t data);
 void trie_key_append_32(struct trie_key *key, uint32_t data);
 void trie_key_append_64(struct trie_key *key, uint64_t data);
-void trie_key_append_bytes(struct trie_key *key, const uint8_t *data, size_t n);
+void trie_key_append_bytes(
+        struct trie_key *key, restrict const uint8_t *data, size_t n);
 
 struct trie_key_it trie_key_extract_16(struct trie_key_it it, uint16_t *data);
 struct trie_key_it trie_key_extract_32(struct trie_key_it it, uint32_t *data);
 struct trie_key_it trie_key_extract_64(struct trie_key_it it, uint64_t *data);
-struct trie_key_it trie_key_extract_bytes(struct trie_key_it it, uint8_t *data, size_t n);
+struct trie_key_it trie_key_extract_bytes(
+        struct trie_key_it it, restrict uint8_t *data, size_t n);
