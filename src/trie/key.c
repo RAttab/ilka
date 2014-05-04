@@ -185,6 +185,8 @@ void trie_key_push(struct trie_key_it *it, uint64_t data, size_t bits)
         word = (word + 1) % TRIE_KEY_CHUNK_WORDS;
         it->chunk[word] = data >> n;
     }
+
+    it->key->size = ilka_ceil_div_s(it->pos, 8);
 }
 
 int trie_key_consume(struct trie_key_it *it, uint64_t data, size_t bits)
