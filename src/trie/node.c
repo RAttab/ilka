@@ -18,9 +18,9 @@ static ilka_ptr write(
         const struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t n)
 {
-    ilka_ptr dest_ptr = ilka_region_alloc(r, trie_kvs_size(&info));
-    void * addr = ilka_region_pin_w(dest_ptr, n * sizeof(struct trie_kv));
-    trie_kvs_encode(&info, addr, kvs, n);
+    ilka_ptr dest = ilka_region_alloc(r, trie_kvs_size(&info));
+    void * dest_p = ilka_region_pin_w(dest);
+    trie_kvs_encode(&info, dest_p, kvs, n);
     return dest;
 }
 
