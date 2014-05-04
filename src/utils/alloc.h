@@ -11,10 +11,11 @@
 #include "compiler.h"
 
 
+// -----------------------------------------------------------------------------
 // alloc align
 // -----------------------------------------------------------------------------
 
-inline void * ilka_alloc_align(size_t n, size_t align = n)
+inline void * ilka_malloc_align(size_t n, size_t align = n)
     ilka_malloc
 {
     void *ptr;

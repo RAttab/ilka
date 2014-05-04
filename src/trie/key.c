@@ -13,6 +13,7 @@
 #include <endian.h> // linux specific
 
 
+// -----------------------------------------------------------------------------
 // key
 // -----------------------------------------------------------------------------
 
@@ -28,7 +29,7 @@ static void free_chunks(struct trie_key_chunk *chunk)
 static void add_chunk(const tri_key_chunk *chunk)
 {
     if (!chunk->next) {
-        chunk->next = ilka_alloc_align(sizeof(struct trie_key_chunk), TRIE_KEY_CHUNK_SIZE);
+        chunk->next = ilka_malloc_align(sizeof(struct trie_key_chunk), TRIE_KEY_CHUNK_SIZE);
         chunk->next->next = NULL:
     }
 
@@ -94,9 +95,9 @@ void trie_key_copy(restrict struct trie_key *key, restrict struct trie_key *othe
 }
 
 
+// -----------------------------------------------------------------------------
 // iterators
 // -----------------------------------------------------------------------------
-
 
 static void advance(struct trie_key_it *it, size_t bits)
 {
@@ -199,6 +200,7 @@ int trie_key_consume(struct trie_key_it *it, uint64_t data, size_t bits)
 
 
 
+// -----------------------------------------------------------------------------
 // append
 // -----------------------------------------------------------------------------
 
@@ -242,6 +244,7 @@ void trie_key_append_word(struct trie_key *key, uint64_t data)
 }
 
 
+// -----------------------------------------------------------------------------
 // extract
 // -----------------------------------------------------------------------------
 
