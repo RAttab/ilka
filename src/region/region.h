@@ -9,23 +9,42 @@
 
 #include "compiler.h"
 
+
 // -----------------------------------------------------------------------------
-// regionn
+// ilka ptr
 // -----------------------------------------------------------------------------
 
+// Must be pinned by the region before it can be accessed through a regular
+// pointer. This allows the region to keep track of ongoing reads and writes and
+// block them when necessary.
 typedef uint64_t ilka_ptr;
+
+
+// -----------------------------------------------------------------------------
+// region
+// -----------------------------------------------------------------------------
 
 struct ilka_region;
 
-ilka_ptr ilka_region_alloc(struct ilka_region *r, size_t n) ilka_malloc
+inline ilka_ptr ilka_region_alloc(struct ilka_region *r, size_t n) ilka_malloc
 {
     return malloc(n);
 }
 
-void ilka_region_free(struct ilka_region *r, ilka_ptr ptr)
+inline void ilka_region_free(struct ilka_region *r, ilka_ptr ptr)
 {
     free(ptr);
 }
 
-void * ilka_region_pin(struct ilka_region *r, ilka_ptr ptr, size_t n) {}
-void ilka_region_unpin(struct ilka_region *r, ilka_ptr ptr) {}
+
+inline void * ilka_region_pin_r(struct ilka_region *r, ilka_ptr ptr, size_t n)
+{
+    return ptr;
+}
+inline void * ilka_region_pin_w(struct ilka_region *r, ilka_ptr ptr, size_t n)
+{
+    return ptr;
+}
+inline void ilka_region_pin_upgrade(struct ilka_region *r) {}
+inline void ilka_region_unpin_r(struct ilka_region *r) {}
+inline void ilka_region_unpin_w(struct ilka_region *r) {}

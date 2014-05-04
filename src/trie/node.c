@@ -19,7 +19,7 @@ static ilka_ptr write(
         const struct trie_kv *kvs, size_t n)
 {
     ilka_ptr dest_ptr = ilka_region_alloc(r, trie_kvs_size(&info));
-    void * addr = ilka_region_pin(dest_ptr, n * sizeof(struct trie_kv));
+    void * addr = ilka_region_pin_w(dest_ptr, n * sizeof(struct trie_kv));
     trie_kvs_encode(&info, addr, kvs, n);
     return dest;
 }
@@ -61,7 +61,11 @@ static ilka_ptr add_kv(
         struct trie_kv kv)
 {
     ilka_ptr dest_ptr = 0;
-    if (trie_kvs_add_inplace(info, to_add)) return;
+
+    ilka_region_pin_upgrade(r);
+    int ret = trie_kvs_add_inplace(info, to_add);
+    ilka_region_unpin_w(r);
+    if (ret) return;
 
     size_t n = info->num_buckets + 1;
     struct trie_kv *kvs = alloca(n * sizeof(struct trie_kv));
@@ -76,6 +80,6 @@ static ilka_ptr add_kv(
          dest = write(r, &compressed, kvs, n);
     else dest = burst(r, kvs, n);
 
-    ilka_region_unpin(dest);
+    ilka_region_unpin_w(r);
 }
 
