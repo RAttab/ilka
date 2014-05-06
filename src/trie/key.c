@@ -6,7 +6,7 @@
 */
 
 #include "key.h"
-#include "utils/misc.h"
+#include "utils/bits.h"
 #include "utils/alloc.h"
 
 #include <stdlib.h>
