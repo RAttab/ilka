@@ -71,7 +71,7 @@ static ilka_ptr add_kv(
     struct trie_kv *kvs = alloca(n * sizeof(struct trie_kv));
 
     trie_kvs_extract(info, kvs, n);
-    trie_kvs_add(kv, kvs, n);
+    trie_kvs_add(kvs, n, kv);
 
     struct trie_kvs_info compressed;
     trie_kvs_info(&compressed, kvs, n);
