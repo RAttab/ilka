@@ -23,7 +23,9 @@ struct trie_kv
 struct trie_kvs_info
 {
     uint8_t key_len;
+
     uint8_t key_bits;
+    uint8_t key_shift;
     uint8_t key_prefix_bits;
 
     uint8_t val_bits;
@@ -35,9 +37,9 @@ struct trie_kvs_info
     uint64_t key_prefix;
     uint64_t val_prefix;
 
-    uint32_t present;
-    uint32_t terminal;
-    uint32_t tombstone;
+    uint64_t present;
+    uint64_t terminal;
+    uint64_t tombstone;
 
     void *data;
     size_t data_size;
