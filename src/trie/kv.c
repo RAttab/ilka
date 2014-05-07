@@ -7,18 +7,18 @@
 
 Static layout:
 
-   byte  bit  len  field              f(x)
+   byte  bit  len  field                   f(x)
 
       0    0    4  lock
-           5    4  key_len            x << 2
-      1    0    4  key_prefix_bits    x << 2
-           5    4  key_shift          x << 2
-      2    0    4  key_prefix_len     x << 2
-           5    4  key_prefix_shift   x << 2
-      3    0    4  val_prefix_bits    x << 2
-           5    4  val_shift          x << 2
-      4    0    4  val_prefix_len     x << 2
-           5    4  val_prefix_shift   x << 2
+           5    4  key_len                 x << 2
+      1    0    4  key_prefix_bits         x << 2
+           5    4  key_shift               x << 2
+      2    0    4  key_prefix_encode_bits  x << 3
+           5    4  key_prefix_shift        x << 2
+      3    0    4  val_prefix_bits         x << 2
+           5    4  val_shift               x << 2
+      4    0    4  val_prefix_encode_bits  x << 3
+           5    4  val_prefix_shift        x << 2
       5    0    8  buckets
 
       key_bits = key_len - key_prefix_bits
@@ -29,8 +29,8 @@ Dynamic layout:
 
    field        range     len
 
-   key_prefix   [ 0,  7]  key_prefix_bits - key_prefi_len - key_prefix_shift
-   val_prefix   [ 0,  7]  val_prefix_bits - val_prefi_len - val_prefix_shift
+   key_prefix   [ 0,  7]  key_prefix_bits - key_prefi_encode_bits - key_prefix_shift
+   val_prefix   [ 0,  7]  val_prefix_bits - val_prefi_encode_bits - val_prefix_shift
    state        [ 1, 16]  buckets * 2
    key_buckets            key_bits * buckets
    val_buckets            val_bits * buckets
@@ -48,18 +48,42 @@ Notes:
    - prefixes are omitted if their corresponding prefix_bits are 0. Note that
      neither prefix_len nor prefix_shift will be omitted. They will simply be 0.
 
+   - prefix_encode_bits and prefix_shift can be derived from the prefix itself
+     and is therefor not stored in trie_kvs_info.
+
 */
 
 #include "kv.h"
+#include "utils/arch.h"
 #include "utils/bits.h"
 
 // -----------------------------------------------------------------------------
 // kvs
 // -----------------------------------------------------------------------------
 
-enum { MAX_BITS = sizeof(uint64_t) * 8 };
+enum
+{
+    MAX_BITS = sizeof(uint64_t) * 8,
 
-static void adjust_bits(uint8_t *bits, uint8_t *prefix_bits, uint64_t *prefix)
+    STATIC_HEADER_SIZE = 6
+};
+
+static uint8_t prefix_shift(uint64_t prefix)
+{
+    return ctz(prefix) & 0x3;
+}
+
+static uint8_t prefix_bits(uint64_t prefix)
+{
+    uint8_t bits = MAX_BITS - clz(prefix) - prefix_shift(prefix);
+    return (((bits - 1) & 0x7) + (1 << 3);
+}
+
+static void adjust_bits(
+        uint8_t *bits,
+        uint8_t *prefix_bits,
+        uint8_t *prefix_encode_bits,
+        uint64_t *prefix))
 {
     *bits = ((*bits - 1) & 0x3) + (1 << 2);
     *prefix_bits &= 0x3;
@@ -101,9 +125,13 @@ static void calc_bits(
     adjust_bits(&info->val_bits, &info->val_prefix_bits);
 }
 
-static size_t bucket_start_byte(struct trie_kvs_info *info)
+static void calc_buckets(struct trie_kvs_info *info)
 {
+    size_t leftover = ILKA_CACHE_LINE - STATIC_HEADER_SIZE;
+    if (info->key_prefix_bits) leftover -= prefix_bits(info->key_prefix) >> 3;
+    if (info->val_prefix_bits) leftover -= prefix_bits(info->val_prefix) >> 3;
 
+    // \todo
 }
 
 void trie_kvs_info(
@@ -117,6 +145,7 @@ void trie_kvs_info(
     memset(info, 0, sizeof(struct trie_kvs_info));
     info->key_len = key_len;
     calc_bits(info, kvs, n);
+    calc_buckets(info);
 }
 
 size_t trie_kvs_size(const struct trie_kvs_info *info)
