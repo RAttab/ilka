@@ -24,11 +24,16 @@ struct trie_kvs_info
 {
     uint8_t key_len;
     uint8_t key_bits;
+    uint8_t key_prefix_bits;
+
     uint8_t val_bits;
+    uint8_t val_shift;
+    uint8_t val_prefix_bits;
+
     uint8_t buckets;
 
-    uint8_t prefix_bits;
-    uint64_t prefix;
+    uint64_t key_prefix;
+    uint64_t val_prefix;
 
     uint32_t present;
     uint32_t terminal;

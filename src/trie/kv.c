@@ -14,65 +14,38 @@
 
 enum { MAX_BITS = sizeof(uint64_t) * 8 };
 
-static size_t prefix_bits(const struct trie_kv *kvs, size_t n)
+static void adjust_bits(uint8_t *bits, uint8_t *prefix_bits, uint64_t *prefix)
 {
-    uint64_t same = -1ULL;
+    *bits = ((*bits - 1) & 0x3) + (1 << 2);
+    *prefix_bits &= 0x3;
 
-    for (size_t i = 1; i < n; ++i)
-        same &= ~(kvs[i-1].key ^ kvs[i].key);
-
-    return clz(~same);
-}
-
-static uint64_t prefix_mask(size_t bits)
-{
-    return ~((1ULL << (MAX_BITS - bits)) - 1);
+    *prefix = ~((1ULL << (MAX_BITS - *prefix_bits)) - 1);
 }
 
 static void calc_bits(
         struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t n)
 {
-    uint64_t suffix_mask = ~prefix_mask(info->prefix_bits);
-
-    info->key_bits = MAX_BITS;
-    info->val_bits = MAX_BITS;
+    uint64_t key_same = -1ULL;
+    uint64_t val_same = -1ULL;
+    info->val_shift = MAX_BIT;
 
     for (size_t i = 0; i < n; ++i) {
-        uin8_t key_bits = MAX_BITS - clz(kvs[i].key & suffix_mask);
-        if (key_bits < info->key_bits) info->key_bits = key_bits;
+        key_same &= ~(kvs[0].key ^ kvs[i].key);
+        val_same &= ~(kvs[0].val ^ kvs[i].val);
 
-        uin8_t val_bits = MAX_BITS - clz(kvs[i].val);
-        if (val_bits < info->val_bits) info->val_bits = val_bits;
+        uint8_t shift = ctz(kv[i].val);
+        if (shift < info->val_shift) info->val_shift = shift;
     }
 
-    info->key_bits = ceil_pow2(info->val_bits);
-    info->val_bits = ceil_pow2(info->val_bits);
-}
+    info->key_prefix_bits = clz(~key_same);
+    info->val_prefix_bits = clz(~val_same);
 
-static void calc_prefix_bits(struct trie_kvs_info *info, uint64_t key)
-{
-    if (!info->prefix_bits || info->key_bits == info->key_len) {
-        info->prefix_bits = 0;
-        info->prefix = 0;
-        return;
-    }
+    info->key_bits = info->key_len - info->key_prefix_bits;
+    info->val_bits = MAX_BITS - info->val_prefix_bits - shift;
 
-    info->prefix_bits = ceil_div(info->prefix_bits, 8) * 8;
-    info->prefix = key & prefix_mask(info->prefix_bits);
-
-    // zero-out any overlapping bits in the prefix.
-    size_t total_bits = key_bits + info->prefix_bits;
-    if (total_bits > info->key_len) {
-        size_t overlap = total_bits - info->key_len;
-        uint64_t mask = (1ULL << (info->key_bits + overlap)) - 1;
-        info->prefix &= ~mask;
-    }
-}
-
-static size_t bucket_start_byte(struct trie_kvs_info *info)
-{
-
+    adjust_bits(&info->key_bits, &info->key_prefix_bits);
+    adjust_bits(&info->val_bits, &info->val_prefix_bits);
 }
 
 void trie_kvs_info(
@@ -85,10 +58,7 @@ void trie_kvs_info(
 
     memset(info, 0, sizeof(struct trie_kvs_info));
     info->key_len = key_len;
-
-    info->prefix_bits = prefix_bits(kvs, n);
     calc_bits(info, kvs, n);
-    calc_prefix_bits(info, kvs[0].key);
 }
 
 size_t trie_kvs_size(const struct trie_kvs_info *info)
