@@ -38,12 +38,20 @@ inline size_t ceil_div(size_t n, size_t d)
 // bit coder
 // -----------------------------------------------------------------------------
 
-struct bit_coder
+ostruct bit_decoder
+{
+    const uint64_t *data;
+    size_t size; // bytes
+    size_t pos;  // bits
+};
+uint64_t bit_decode(struct bit_decoder *coder, size_t bits);
+void bit_decode_skip(struct bit_decoder *coder, size_t bits);
+
+struct bit_encoder
 {
     uint64_t *data;
     size_t size; // bytes
     size_t pos;  // bits
-}
-
-uint64_t bit_decode(struct bit_coder *coder, size_t bits);
-void bit_encode(struct bit_coder *coder, uint64_t value, size_t bits);
+};
+void bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits);
+void bit_encode_skip(struct bit_decoder *coder, size_t bits);
