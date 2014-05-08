@@ -29,8 +29,8 @@ Dynamic layout:
 
    field        range     len
 
-   key_prefix   [ 0,  7]  key_prefix_bits - key_prefi_encode_bits - key_prefix_shift
-   val_prefix   [ 0,  7]  val_prefix_bits - val_prefi_encode_bits - val_prefix_shift
+   key_prefix   [ 0,  7]  key_prefix_encode_bits - key_prefix_shift
+   val_prefix   [ 0,  7]  val_prefix_encode_bits - val_prefix_shift
    state        [ 1, 16]  buckets * 2
    key_buckets            key_bits * buckets
    val_buckets            val_bits * buckets
@@ -68,16 +68,10 @@ enum
     STATIC_HEADER_SIZE = 6
 };
 
-static uint8_t prefix_shift(uint64_t prefix)
-{
-    return ctz(prefix) & 0x3;
-}
 
-static uint8_t prefix_bits(uint64_t prefix)
-{
-    uint8_t bits = MAX_BITS - clz(prefix) - prefix_shift(prefix);
-    return ((bits - 1) & 0x7) + (1 << 3);
-}
+// -----------------------------------------------------------------------------
+// calc kvs
+// -----------------------------------------------------------------------------
 
 static void adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 {
@@ -88,6 +82,10 @@ static void adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 
     encode->prefix_bits &= 0x3;
     encode->prefix = ~((1ULL << (MAX_BITS - encode->prefix_bits)) - 1);
+
+    encode->prefix_shift = ctz(prefix) & 0x3;
+    encode->prefix_encode_bits =
+        ceil_div(MAX_BITS - clz(encode->prefix) - encode->prefix_shift, 8) * 8;
 }
 
 static void calc_bits(
@@ -147,25 +145,157 @@ void trie_kvs_info(
     calc_buckets(info);
 }
 
-size_t trie_kvs_size(const struct trie_kvs_info *info)
-{
 
+// -----------------------------------------------------------------------------
+// decode
+// -----------------------------------------------------------------------------
+
+static void decode_info(
+        struct bit_decoder *coder,
+        struct trie_kvs_encode_info *encode,
+        size_t max_bits)
+{
+    encode->prefix_bits = bit_decode(coder, 4) << 2;
+    encode->shift = bit_decode(coder, 4) << 2;
+
+    encode->prefix_encode_bits = bit_decode(&coder, 4) << 3;
+    encode->prefix_shift = bit_decode(&coder, 4) << 2;
+
+    encode->bits = max_bits - encode->prefix_bits;
+}
+
+static void decode_prefix(
+        struct bit_decoder *coder,
+        struct trie_kvs_encode_info *encode)
+{
+    if (!encode->prefix_bits) return;
+
+    encode->prefix = bit_decode(encode->prefix_encode_bits);
+    encode->prefix <<= encode->prefix_shift;
+}
+
+static void decode_state(
+        struct bit_decoder *coder,
+        struct trie_kvs_info *info)
+{
+    size_t bits = ceil_div(info->buckets, 4);
+
+    uint64_t s0 = bit_decode(coder, bits);
+    uint64_t s1 = bit_decode(coder, bits);
+
+    info->branches  =  s0 & ~s1;
+    info->terminal  = ~s0 &  s1;
+    info->tombstone =  s0 &  s1;
+}
+
+static struct trie_kv decode_bucket(
+        struct bit_decoder *coder,
+        struct trie_kvs_info *info)
+{
+    // \todo
 }
 
 void trie_kvs_decode(
         struct trie_kvs_info *info,
         const void *data, size_t n)
 {
+    struct bit_decoder coder = { .data = data, .size = n };
+    memset(info, 0, sizeof(struct trie_kvs_info));
 
+    bit_decode_skip(&coder, 4); // lock.
+    info->key_len = bit_decode(&coder, 4) << 2;
+
+    decode_info(&coder, &info->key, info->key_len);
+    decode_info(&coder, &info->val, MAX_BITS);
+
+    info->buckets = bit_decode(&coder, 8);
+
+    decode_prefix(&coder, &info->key);
+    decode_prefix(&coder, &info->val);
+
+    decode_state(&code, info);
+
+    // \todo decode_bucket
+}
+
+
+// -----------------------------------------------------------------------------
+// encode
+// -----------------------------------------------------------------------------
+
+static void encode_info(
+        struct bit_encoder *coder,
+        struct trie_kvs_encode_info *encode,
+        size_t max_bits)
+{
+    bit_encode(coder, encode->prefix_bits >> 2, 4);
+    bit_encode(coder, encode->shift >> 2, 4);
+
+    bit_encode(coder, encode->prefix_encode_bits >> 3, 4);
+    bit_encode(coder, encode->prefix_shift >> 2, 4);
+}
+
+static void encode_prefix(
+        struct bit_encoder *coder,
+        struct trie_kvs_encode_info *encode)
+{
+    if (!encode->prefix_bits) return;
+
+    size_t bits = encode->prefix_encode_bits;
+    size_t shift = encode->prefix_shift;
+
+    bit_encode(coder, encode->prefix >> shift, bis);
+}
+
+static void encode_state(
+        struct bit_encoder *coder,
+        struct trie_kvs_info *info)
+{
+    size_t bits = ceil_div(info->buckets, 4);
+
+    uint64_t s0 = info->branches | info->tombstone;
+    uint64_t s1 = info->terminal | info->tombstone;
+
+    bit_encode(coder, s0, bits);
+    bit_encode(coder, s1, bits);
+}
+
+static void encode_bucket(
+        struct trie_encoder *coder,
+        struct trie_kvs_info *info,
+        struct trie_kv kv)
+{
+    // \todo
 }
 
 void trie_kvs_encode(
         const struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t kvs_size,
-        void *dest, size_t dest_size)
+        void *data, size_t n)
 {
+    struct bit_encoder coder = { .data = data, .size = n };
+    memset(data, 0, n);
 
+    bit_encode_skip(&coder, 4); // lock.
+    bit_encode(&coder, info->key_len >> 2, 4);
+
+    encode_info(&coder, &info->key, info->key_len);
+    encode_info(&coder, &info->val, MAX_BITS);
+
+    info->buckets = bit_encode(&coder, 8);
+
+    encode_prefix(&coder, &info->key);
+    encode_prefix(&coder, &info->val);
+
+    encode_state(&code, info);
+
+    // \todo encode_bucket
 }
+
+
+// -----------------------------------------------------------------------------
+// ops
+// -----------------------------------------------------------------------------
 
 void trie_kvs_extract(
         const struct trie_kvs_info *info,
@@ -210,6 +340,10 @@ voir trie_kvs_rmv(struct trie_kvs_info *info, uint64_t key)
 
 }
 
+
+// -----------------------------------------------------------------------------
+// burst
+// -----------------------------------------------------------------------------
 
 void trie_kvs_burst(
         struct trie_kvs_burst_info *burst,

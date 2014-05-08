@@ -76,7 +76,7 @@ static ilka_ptr add_kv(
     struct trie_kvs_info compressed;
     trie_kvs_info(&compressed, kvs, n);
 
-    if (trie_kvs_size(&compressed) <= ilka_cache_line)
+    if (n <= compressed.buckets)
          dest = write(r, &compressed, kvs, n);
     else dest = burst(r, kvs, n);
 

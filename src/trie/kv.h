@@ -25,6 +25,8 @@ struct trie_kvs_encode_info
     uint8_t bits;
     uint8_t shift;
     uint8_t prefix_bits;
+    uint8_t prefix_encode_bits;
+    uint8_t prefix_shift;
     uint64_t prefix;
 };
 
@@ -37,7 +39,7 @@ struct trie_kvs_info
     struct trie_kvs_encode_info key;
     struct trie_kvs_encode_info val;
 
-    uint64_t present;
+    uint64_t branches;
     uint64_t terminal;
     uint64_t tombstone;
 
@@ -50,8 +52,6 @@ void trie_kvs_info(
         struct trie_kvs_info *info, size_t key_len,
         const struct trie_kv *kvs, size_t n);
 
-size_t trie_kvs_size(const struct trie_kvs_info *info);
-
 void trie_kvs_decode(
         struct trie_kvs_info *info,
         const void *data, size_t n);
@@ -59,7 +59,7 @@ void trie_kvs_decode(
 void trie_kvs_encode(
         const struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t kvs_size,
-        void *dest, size_t dest_size);
+        void *data, size_t n);
 
 void trie_kvs_extract(
         const struct trie_kvs_info *info,
