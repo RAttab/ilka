@@ -76,19 +76,18 @@ static uint8_t prefix_shift(uint64_t prefix)
 static uint8_t prefix_bits(uint64_t prefix)
 {
     uint8_t bits = MAX_BITS - clz(prefix) - prefix_shift(prefix);
-    return (((bits - 1) & 0x7) + (1 << 3);
+    return ((bits - 1) & 0x7) + (1 << 3);
 }
 
-static void adjust_bits(
-        uint8_t *bits,
-        uint8_t *prefix_bits,
-        uint8_t *prefix_encode_bits,
-        uint64_t *prefix))
+static void adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 {
-    *bits = ((*bits - 1) & 0x3) + (1 << 2);
-    *prefix_bits &= 0x3;
+    encode->shift &= 0x3;
 
-    *prefix = ~((1ULL << (MAX_BITS - *prefix_bits)) - 1);
+    encode->bits = max_bits - encode->prefix_bits - info->key.shift;
+    encode->bits = ((encode->bits - 1) & 0x3) + (1 << 2);
+
+    encode->prefix_bits &= 0x3;
+    encode->prefix = ~((1ULL << (MAX_BITS - encode->prefix_bits)) - 1);
 }
 
 static void calc_bits(
@@ -98,8 +97,8 @@ static void calc_bits(
     uint64_t key_same = -1ULL;
     uint64_t val_same = -1ULL;
 
-    info->val_shift = MAX_BIT;
-    info->key_shift = MAX_BIT;
+    info->val.shift = MAX_BIT;
+    info->key.shift = MAX_BIT;
 
     for (size_t i = 0; i < n; ++i) {
         key_same &= ~(kvs[0].key ^ kvs[i].key);
@@ -108,30 +107,30 @@ static void calc_bits(
         uint8_t key_shift = ctz(kv[i].key);
         uint8_t val_shift = ctz(kv[i].val);
 
-        if (key_shift < info->key_shift) info->key_shift = key_shift;
-        if (val_shift < info->val_shift) info->val_shift = val_shift;
+        if (key_shift < info->key.shift) info->key.shift = key_shift;
+        if (val_shift < info->val.shift) info->val.shift = val_shift;
     }
 
-    info->key_prefix_bits = clz(~key_same);
-    info->val_prefix_bits = clz(~val_same);
+    info->key.prefix_bits = clz(~key_same);
+    info->val.prefix_bits = clz(~val_same);
 
-    info->key_shift &= 0x3;
-    info->val_shift &= 0x3;
-
-    info->key_bits = info->key_len - info->key_prefix_bits;
-    info->val_bits = MAX_BITS - info->val_prefix_bits - shift;
-
-    adjust_bits(&info->key_bits, &info->key_prefix_bits);
-    adjust_bits(&info->val_bits, &info->val_prefix_bits);
+    adjust_bits(&info->key, info->key_len);;
+    adjust_bits(&info->val, MAX_bitS);
 }
 
 static void calc_buckets(struct trie_kvs_info *info)
 {
     size_t leftover = ILKA_CACHE_LINE - STATIC_HEADER_SIZE;
-    if (info->key_prefix_bits) leftover -= prefix_bits(info->key_prefix) >> 3;
-    if (info->val_prefix_bits) leftover -= prefix_bits(info->val_prefix) >> 3;
+    if (info->key.prefix_bits) leftover -= prefix_bits(info->key.prefix) >> 3;
+    if (info->val.prefix_bits) leftover -= prefix_bits(info->val.prefix) >> 3;
 
-    // \todo
+    size_t bucket_size = info->key.bits + info->val.bits;
+
+    info->buckets = leftover / bucket_size;
+    if (info->buckets > MAX_BITS) info->buckets = MAX_BITS;
+
+    while (info->buckets * 2 + info->buckets * bucket_size > leftover)
+        info->buckets--;
 }
 
 void trie_kvs_info(

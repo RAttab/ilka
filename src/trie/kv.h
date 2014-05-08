@@ -20,22 +20,22 @@ struct trie_kv
     int terminal, tombstone;
 };
 
+struct trie_kvs_encode_info
+{
+    uint8_t bits;
+    uint8_t shift;
+    uint8_t prefix_bits;
+    uint64_t prefix;
+};
+
+
 struct trie_kvs_info
 {
     uint8_t key_len;
-
-    uint8_t key_bits;
-    uint8_t key_shift;
-    uint8_t key_prefix_bits;
-
-    uint8_t val_bits;
-    uint8_t val_shift;
-    uint8_t val_prefix_bits;
-
     uint8_t buckets;
 
-    uint64_t key_prefix;
-    uint64_t val_prefix;
+    struct trie_kvs_encode_info key;
+    struct trie_kvs_encode_info val;
 
     uint64_t present;
     uint64_t terminal;
