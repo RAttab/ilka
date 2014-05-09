@@ -240,21 +240,21 @@ void trie_kvs_decode(
         struct trie_kvs_info *info,
         const void *data, size_t n)
 {
-    struct bit_decoder coder = { .data = data, .size = n };
     memset(info, 0, sizeof(struct trie_kvs_info));
+    info->decoder = { .data = data, .size = n };
 
-    bit_decode_skip(&coder, 4); // lock.
-    info->key_len = bit_decode(&coder, 4) << 2;
+    bit_decode_skip(&info->decoder, 4); // lock.
+    info->key_len = bit_decode(&info->decoder, 4) << 2;
 
-    decode_info(&coder, &info->key, info->key_len);
-    decode_info(&coder, &info->val, MAX_BITS);
+    decode_info(&info->decoder, &info->key, info->key_len);
+    decode_info(&info->decoder, &info->val, MAX_BITS);
 
-    info->buckets = bit_decode(&coder, 8);
+    info->buckets = bit_decode(&info->decoder, 8);
 
-    decode_prefix(&coder, &info->key);
-    decode_prefix(&coder, &info->val);
+    decode_prefix(&info->decoder, &info->key);
+    decode_prefix(&info->decoder, &info->val);
 
-    decode_state(&code, info);
+    decode_state(&info->decoder, info);
 }
 
 
@@ -342,26 +342,79 @@ void trie_kvs_encode(
         size_t bucket = is_abs ? i : key_abs_bucket(info, kvs[i].key);
         encode_bucket(*coder, info, kvs[i], bucket);
     }
+
+    info->data = data;
+    info->data_size = n;
 }
 
 
 // -----------------------------------------------------------------------------
-// ops
+// extract
 // -----------------------------------------------------------------------------
+
+static void trie_kvs_extract_abs(
+        const struct trie_kvs_info *info,
+        struct trie_kv *kvs, size_t n)
+{
+    uint64_t buckets = info->present | info->tombstone | info->terminal;
+
+    for (size_t i = 0, bucket = bitfield_next(buckets);
+         bucket < info->buckets;
+         i++, bucket = bitfield_next(buckets, bucket + 1))
+    {
+        kvs[i] = decode_bucket(info->decoder, bucket);
+    }
+}
+
+static void trie_kvs_extract_packed(
+        const struct trie_kvs_info *info,
+        struct trie_kv *kvs, size_t n)
+{
+    uint64_t buckets = info->present | info->tombstone | info->terminal;
+
+    for (size_t i = 0, bucket = 0; bucket < info->buckets; ++bucket) {
+        uint64_t mask = 1ULL << bucket;
+        if (!(buckets & mask)) continue;
+
+        kvs[i++] = decode_bucket(info->decoder, bucket);
+    }
+}
 
 void trie_kvs_extract(
         const struct trie_kvs_info *info,
         struct trie_kv *kvs, size_t n)
 {
+    if (n < info->buckets) {
+        ilka_error("kvs array of size <%zu> requires at least <%zu> buckets",
+                n, info->buckets);
+    }
 
+    if (is_bucket_abs(info))
+        trie_kvs_extract_abs(info, kvs, n);
+    else trie_kvs_extract_packed(info, kvs, n);
 }
+
+
+// -----------------------------------------------------------------------------
+// add
+// -----------------------------------------------------------------------------
 
 void trie_kvs_add(struct trie_kv *kvs, size_t n, struct trie_kv kv)
 {
 
 }
 
+int trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
+{
+
+}
+
 voir trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv)
+{
+
+}
+
+voir trie_kvs_rmv(struct trie_kvs_info *info, uint64_t key)
 {
 
 }
@@ -378,16 +431,6 @@ struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it)
 }
 
 struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, struct trie_key_it *it)
-{
-
-}
-
-int trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
-{
-
-}
-
-voir trie_kvs_rmv(struct trie_kvs_info *info, uint64_t key)
 {
 
 }

@@ -42,8 +42,7 @@ struct trie_kvs_info
     uint64_t terminal;
     uint64_t tombstone;
 
-    void *data;
-    size_t data_size;
+    struct bit_decoder decoder;
 };
 
 
@@ -67,8 +66,8 @@ void trie_kvs_extract(
 void trie_kvs_add(struct trie_kv *kvs, size_t n, struct trie_kv kv);
 
 int trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv);
-voir trie_kvs_rmv(struct trie_kvs_info *info, uint64_t key);
 voir trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv);
+voir trie_kvs_rmv(struct trie_kvs_info *info, uint64_t key);
 
 struct trie_kv trie_kvs_get(struct trie_kvs_info *info, struct trie_key_it *it);
 struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it);
