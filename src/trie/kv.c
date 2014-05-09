@@ -77,6 +77,23 @@ enum
 
 
 // -----------------------------------------------------------------------------
+// utils
+// -----------------------------------------------------------------------------
+
+static uint8_t is_bucket_abs(struct trie_kvs_info *info)
+{
+    return (1ULL << info->key.bits) > info->buckets;
+}
+
+static size_t key_abs_bucket(struct trie_kvs_info *info, uint64_t key)
+{
+    uint64_t bucket = key >> info->key.shift;
+    bucket &= (1ULL << info->key.bits) - 1;
+    return bucket;
+}
+
+
+// -----------------------------------------------------------------------------
 // calc kvs
 // -----------------------------------------------------------------------------
 
@@ -197,8 +214,9 @@ static void decode_state(
 }
 
 static struct trie_kv decode_bucket(
-        struct bit_decoder coder, size_t bucket,
-        struct trie_kvs_info *info)
+        struct bit_decoder coder,
+        struct trie_kvs_info *info,
+        size_t bucket)
 {
     size_t bucket_bits = info->key.bits + info->val.bits;
     bit_decode_skip(&coder, bucket_bits * bucket);
@@ -298,28 +316,6 @@ static void encode_bucket(
     bit_encode(&coder, kv.val >> info->val.shift, info->val.bits);
 }
 
-static void encode_bucket_abs(
-        struct trie_encoder *coder,
-        struct trie_kvs_info *info,
-        struct trie_kv *kvs, size_t n)
-{
-    for (size_t i = 0; i < n; ++i) {
-        uint64_t bucket = kvs->key >> info->key.shift;
-        bucket &= (1ULL << info->key.bits) - 1;
-
-        encode_bucket(*coder, info, kvs[i], bucket);
-    }
-}
-
-static void encode_bucket_packed(
-        struct trie_encoder *coder,
-        struct trie_kvs_info *info,
-        struct trie_kv *kvs, size_t n)
-{
-    for (size_t i = 0; i < n; ++i)
-        encode_bucket(*coder, info, kvs[i], i);
-}
-
 void trie_kvs_encode(
         const struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t kvs_size,
@@ -341,9 +337,11 @@ void trie_kvs_encode(
 
     encode_state(&code, info);
 
-    if ((1ULL << info->key.bits) > buckets)
-        encode_bucket_abs(&coder, info, kvs, kvs_size);
-    else encode_bucket_packed(&coder, info, kvs, kvs_size);
+    int is_abs = is_bucket_abs(info);
+    for (size_t i = 0; i < n; ++i) {
+        size_t bucket = is_abs ? i : key_abs_bucket(info, kvs[i].key);
+        encode_bucket(*coder, info, kvs[i], bucket);
+    }
 }
 
 
