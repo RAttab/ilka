@@ -10,30 +10,32 @@ Static layout:
    byte  bit  len  field                   f(x)
 
       0    0    4  lock
-           5    4  key_len                 x << 2
-      1    0    4  key_prefix_bits         x << 2
-           5    4  key_shift               x << 2
-      2    0    4  key_prefix_encode_bits  x << 3
-           5    4  key_prefix_shift        x << 2
-      3    0    4  val_prefix_bits         x << 2
-           5    4  val_shift               x << 2
-      4    0    4  val_prefix_encode_bits  x << 3
-           5    4  val_prefix_shift        x << 2
+           5    4  key.len                 x << 2
+      1    0    4  key.bits                x << 2
+           5    4  key.shift               x << 2
+      2    0    4  key.prefix_bits         x << 3
+           5    4  key.prefix_shift        x << 2
+      3    0    4  val.bits                x << 2
+           5    4  val.shift               x << 2
+      4    0    4  val.prefix_bits         x << 3
+           5    4  val.prefix_shift        x << 2
       5    0    8  buckets
-
-      key_bits = key_len - key_prefix_bits
-      val_bits = MAX_BITS - val_prefix_bits - val_shift
-
 
 Dynamic layout:
 
    field        range     len
 
-   key_prefix   [ 0,  7]  key_prefix_encode_bits - key_prefix_shift
-   val_prefix   [ 0,  7]  val_prefix_encode_bits - val_prefix_shift
+   key.prefix   [ 0,  7]  key.prefix_bits - key.prefix_shift
+   val.prefix   [ 0,  7]  val.prefix_bits - val.prefix_shift
    state        [ 1, 16]  buckets * 2
-   key_buckets            key_bits * buckets
-   val_buckets            val_bits * buckets
+   buckets                (key.bits + val.bits) * buckets
+
+Bucket layout:
+
+   field        range     len
+
+   key          [0, 8]    key.bits
+   val          [0, 8]    val.bits
 
 
 Notes:
@@ -48,8 +50,13 @@ Notes:
    - prefixes are omitted if their corresponding prefix_bits are 0. Note that
      neither prefix_len nor prefix_shift will be omitted. They will simply be 0.
 
-   - prefix_encode_bits and prefix_shift can be derived from the prefix itself
-     and is therefor not stored in trie_kvs_info.
+Todo:
+
+   - Could try to run the same compression but over ~ of the value. Choose which
+     one compresses at the end. Unlikely to be worth it though.
+
+   - Could try to detect sequences (4, 5, 6, 7...) but again, not sure it's
+     worth it.
 
 */
 
@@ -78,13 +85,13 @@ static void adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
     encode->shift &= 0x3;
 
     encode->bits = max_bits - encode->prefix_bits - info->key.shift;
-    encode->bits = ((encode->bits - 1) & 0x3) + (1 << 2);
+    encode->bits = ceil_div(encode->bits, 4) * 4;
 
-    encode->prefix_bits &= 0x3;
-    encode->prefix = ~((1ULL << (MAX_BITS - encode->prefix_bits)) - 1);
+    encode->prefix_bits = max_bits - encode->bits;
+    encode->prefix &= ~((1ULL << encode->bits) - 1);
 
     encode->prefix_shift = ctz(prefix) & 0x3;
-    encode->prefix_encode_bits =
+    encode->prefix_bits =
         ceil_div(MAX_BITS - clz(encode->prefix) - encode->prefix_shift, 8) * 8;
 }
 
@@ -97,6 +104,9 @@ static void calc_bits(
 
     info->val.shift = MAX_BIT;
     info->key.shift = MAX_BIT;
+
+    info->key.prefix = kv[0].key;
+    info->val.prefix = kv[0].val;
 
     for (size_t i = 0; i < n; ++i) {
         key_same &= ~(kvs[0].key ^ kvs[i].key);
@@ -119,8 +129,8 @@ static void calc_bits(
 static void calc_buckets(struct trie_kvs_info *info)
 {
     size_t leftover = ILKA_CACHE_LINE - STATIC_HEADER_SIZE;
-    if (info->key.prefix_bits) leftover -= prefix_bits(info->key.prefix) >> 3;
-    if (info->val.prefix_bits) leftover -= prefix_bits(info->val.prefix) >> 3;
+    leftover -= info->key.prefix_bits;
+    leftover -= info->val.prefix_bits;
 
     size_t bucket_size = info->key.bits + info->val.bits;
 
@@ -155,13 +165,11 @@ static void decode_info(
         struct trie_kvs_encode_info *encode,
         size_t max_bits)
 {
-    encode->prefix_bits = bit_decode(coder, 4) << 2;
+    encode->bits = bit_decode(coder, 4) << 2;
     encode->shift = bit_decode(coder, 4) << 2;
 
-    encode->prefix_encode_bits = bit_decode(&coder, 4) << 3;
+    encode->prefix_bits = bit_decode(&coder, 4) << 3;
     encode->prefix_shift = bit_decode(&coder, 4) << 2;
-
-    encode->bits = max_bits - encode->prefix_bits;
 }
 
 static void decode_prefix(
@@ -170,7 +178,7 @@ static void decode_prefix(
 {
     if (!encode->prefix_bits) return;
 
-    encode->prefix = bit_decode(encode->prefix_encode_bits);
+    encode->prefix = bit_decode(encode->prefix_bits);
     encode->prefix <<= encode->prefix_shift;
 }
 
@@ -189,10 +197,25 @@ static void decode_state(
 }
 
 static struct trie_kv decode_bucket(
-        struct bit_decoder *coder,
+        struct bit_decoder coder, size_t bucket,
         struct trie_kvs_info *info)
 {
-    // \todo
+    size_t bucket_bits = info->key.bits + info->val.bits;
+    bit_decode_skip(&coder, bucket_bits * bucket);
+
+    uint64_t mask = 1ULL << bucket;
+    struct trie_kv kv = {
+        .terminal = info->terminal & mask,
+        .tombstone = info->tombstone & mask
+    };
+
+    kv.key = bit_decode(&coder, info->key.bits) << info->key.shift;
+    kv.key |= info->key.prefix << info->key.bits;
+
+    kv.val = bit_decode(&coder, info->val.bits) << info->val.shift;
+    kv.val |= info->val.prefix << info->val.bits;
+
+    return kv;
 }
 
 void trie_kvs_decode(
@@ -214,8 +237,6 @@ void trie_kvs_decode(
     decode_prefix(&coder, &info->val);
 
     decode_state(&code, info);
-
-    // \todo decode_bucket
 }
 
 
@@ -228,10 +249,10 @@ static void encode_info(
         struct trie_kvs_encode_info *encode,
         size_t max_bits)
 {
-    bit_encode(coder, encode->prefix_bits >> 2, 4);
+    bit_encode(coder, encode->bits >> 2, 4);
     bit_encode(coder, encode->shift >> 2, 4);
 
-    bit_encode(coder, encode->prefix_encode_bits >> 3, 4);
+    bit_encode(coder, encode->prefix_bits >> 3, 4);
     bit_encode(coder, encode->prefix_shift >> 2, 4);
 }
 
@@ -241,10 +262,10 @@ static void encode_prefix(
 {
     if (!encode->prefix_bits) return;
 
-    size_t bits = encode->prefix_encode_bits;
+    size_t bits = encode->prefix_bits;
     size_t shift = encode->prefix_shift;
 
-    bit_encode(coder, encode->prefix >> shift, bis);
+    bit_encode(coder, encode->prefix >> shift, bits);
 }
 
 static void encode_state(
@@ -261,11 +282,42 @@ static void encode_state(
 }
 
 static void encode_bucket(
+        struct trie_encoder coder,
+        struct trie_kvs_info *info,
+        struct trie_kv kv, size_t bucket)
+{
+    size_t bucket_bits = info->key.bits + info->val.bits;
+    bit_encode_skip(&coder, bucket_bits * bucket);
+
+    uint64_t mask = 1ULL << bucket;
+    if (kv.terminal) info->terminal |= mask;
+    else if (kv.tombstone) info->tombstone |= mask;
+    else info->branches |= mask;
+
+    bit_encode(&coder, kv.key >> info->key.shift, info->key.bits);
+    bit_encode(&coder, kv.val >> info->val.shift, info->val.bits);
+}
+
+static void encode_bucket_abs(
         struct trie_encoder *coder,
         struct trie_kvs_info *info,
-        struct trie_kv kv)
+        struct trie_kv *kvs, size_t n)
 {
-    // \todo
+    for (size_t i = 0; i < n; ++i) {
+        uint64_t bucket = kvs->key >> info->key.shift;
+        bucket &= (1ULL << info->key.bits) - 1;
+
+        encode_bucket(*coder, info, kvs[i], bucket);
+    }
+}
+
+static void encode_bucket_packed(
+        struct trie_encoder *coder,
+        struct trie_kvs_info *info,
+        struct trie_kv *kvs, size_t n)
+{
+    for (size_t i = 0; i < n; ++i)
+        encode_bucket(*coder, info, kvs[i], i);
 }
 
 void trie_kvs_encode(
@@ -289,7 +341,9 @@ void trie_kvs_encode(
 
     encode_state(&code, info);
 
-    // \todo encode_bucket
+    if ((1ULL << info->key.bits) > buckets)
+        encode_bucket_abs(&coder, info, kvs, kvs_size);
+    else encode_bucket_packed(&coder, info, kvs, kvs_size);
 }
 
 

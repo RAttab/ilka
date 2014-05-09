@@ -17,7 +17,7 @@
 struct trie_kv
 {
     uint64_t key, val;
-    int terminal, tombstone;
+    uint8_t terminal, tombstone;
 };
 
 struct trie_kvs_encode_info
@@ -25,7 +25,6 @@ struct trie_kvs_encode_info
     uint8_t bits;
     uint8_t shift;
     uint8_t prefix_bits;
-    uint8_t prefix_encode_bits;
     uint8_t prefix_shift;
     uint64_t prefix;
 };
