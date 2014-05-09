@@ -354,10 +354,9 @@ void trie_kvs_encode(
 
 static void trie_kvs_extract_abs(
         const struct trie_kvs_info *info,
+        uint64_t buckets,
         struct trie_kv *kvs, size_t n)
 {
-    uint64_t buckets = info->present | info->tombstone | info->terminal;
-
     for (size_t i = 0, bucket = bitfield_next(buckets);
          bucket < info->buckets;
          i++, bucket = bitfield_next(buckets, bucket + 1))
@@ -368,10 +367,9 @@ static void trie_kvs_extract_abs(
 
 static void trie_kvs_extract_packed(
         const struct trie_kvs_info *info,
+        uint64_t buckets,
         struct trie_kv *kvs, size_t n)
 {
-    uint64_t buckets = info->present | info->tombstone | info->terminal;
-
     for (size_t i = 0, bucket = 0; bucket < info->buckets; ++bucket) {
         uint64_t mask = 1ULL << bucket;
         if (!(buckets & mask)) continue;
@@ -389,9 +387,11 @@ void trie_kvs_extract(
                 n, info->buckets);
     }
 
+    uint64_t buckets = info->branches | info->tombstone | info->terminal;
+
     if (is_bucket_abs(info))
-        trie_kvs_extract_abs(info, kvs, n);
-    else trie_kvs_extract_packed(info, kvs, n);
+        trie_kvs_extract_abs(info, buckets, kvs, n);
+    else trie_kvs_extract_packed(info, buckets, kvs, n);
 }
 
 
