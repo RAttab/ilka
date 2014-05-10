@@ -63,6 +63,7 @@ Todo:
 #include "kv.h"
 #include "utils/arch.h"
 #include "utils/bits.h"
+#include "utils/bit_coder.h"
 
 // -----------------------------------------------------------------------------
 // kvs
@@ -114,7 +115,7 @@ static void adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 
 static void calc_bits(
         struct trie_kvs_info *info,
-        const struct trie_kv *kvs, size_t n)
+        const struct trie_kv *kvs, size_t kvs_n)
 {
     uint64_t key_same = -1ULL;
     uint64_t val_same = -1ULL;
@@ -125,7 +126,7 @@ static void calc_bits(
     info->key.prefix = kv[0].key;
     info->val.prefix = kv[0].val;
 
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; i < kvs_n; ++i) {
         key_same &= ~(kvs[0].key ^ kvs[i].key);
         val_same &= ~(kvs[0].val ^ kvs[i].val);
 
@@ -160,7 +161,7 @@ static void calc_buckets(struct trie_kvs_info *info)
 
 void trie_kvs_info(
         struct trie_kvs_info *info, size_t key_len,
-        const struct trie_kv *kvs, size_t n)
+        const struct trie_kv *kvs, size_t kvs_n)
 {
     if (!n) ilka_error("empty kvs");
     if (!is_pow2(key_len))
@@ -168,8 +169,10 @@ void trie_kvs_info(
 
     memset(info, 0, sizeof(struct trie_kvs_info));
     info->key_len = key_len;
-    calc_bits(info, kvs, n);
+    calc_bits(info, kvs, kvs_n);
     calc_buckets(info);
+
+    return kvs_n <= info->buckets;
 }
 
 
@@ -238,23 +241,27 @@ static struct trie_kv decode_bucket(
 
 void trie_kvs_decode(
         struct trie_kvs_info *info,
-        const void *data, size_t n)
+        const void *data, size_t data_n)
 {
+    struct bit_decoder coder;
+    bit_decoder_init(&coder, data, data_n);
+
     memset(info, 0, sizeof(struct trie_kvs_info));
-    info->decoder = { .data = data, .size = n };
 
-    bit_decode_skip(&info->decoder, 4); // lock.
-    info->key_len = bit_decode(&info->decoder, 4) << 2;
+    bit_decode_skip(&coder, 4); // lock.
+    info->key_len = bit_decode(&coder, 4) << 2;
 
-    decode_info(&info->decoder, &info->key, info->key_len);
-    decode_info(&info->decoder, &info->val, MAX_BITS);
+    decode_info(&coder, &info->key, info->key_len);
+    decode_info(&coder, &info->val, MAX_BITS);
 
-    info->buckets = bit_decode(&info->decoder, 8);
+    info->buckets = bit_decode(&coder, 8);
 
-    decode_prefix(&info->decoder, &info->key);
-    decode_prefix(&info->decoder, &info->val);
+    decode_prefix(&coder, &info->key);
+    decode_prefix(&coder, &info->val);
 
-    decode_state(&info->decoder, info);
+    decode_state(&coder, info);
+
+    info->bucket_offset = bit_decoder_offset(&coder);
 }
 
 
@@ -318,11 +325,13 @@ static void encode_bucket(
 
 void trie_kvs_encode(
         const struct trie_kvs_info *info,
-        const struct trie_kv *kvs, size_t kvs_size,
-        void *data, size_t n)
+        const struct trie_kv *kvs, size_t kvs_n,
+        void *data, size_t data_n)
 {
-    struct bit_encoder coder = { .data = data, .size = n };
-    memset(data, 0, n);
+    struct bit_encoder coder;
+    bit_encoder_init(&coder, data, data_n);
+
+    memset(data, 0, data_n);
 
     bit_encode_skip(&coder, 4); // lock.
     bit_encode(&coder, info->key_len >> 2, 4);
@@ -337,14 +346,13 @@ void trie_kvs_encode(
 
     encode_state(&code, info);
 
+    info->bucket_offset = bit_encoder_offset(&coder);
+
     int is_abs = is_bucket_abs(info);
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; i < kvs_n; ++i) {
         size_t bucket = is_abs ? i : key_abs_bucket(info, kvs[i].key);
         encode_bucket(*coder, info, kvs[i], bucket);
     }
-
-    info->data = data;
-    info->data_size = n;
 }
 
 
@@ -354,44 +362,50 @@ void trie_kvs_encode(
 
 static void trie_kvs_extract_abs(
         const struct trie_kvs_info *info,
+        struct bit_decoder *coder,
         uint64_t buckets,
-        struct trie_kv *kvs, size_t n)
+        struct trie_kv *kvs, size_t kvs_n)
 {
     for (size_t i = 0, bucket = bitfield_next(buckets);
          bucket < info->buckets;
          i++, bucket = bitfield_next(buckets, bucket + 1))
     {
-        kvs[i] = decode_bucket(info->decoder, bucket);
+        kvs[i] = decode_bucket(*coder, bucket);
     }
 }
 
 static void trie_kvs_extract_packed(
         const struct trie_kvs_info *info,
+        struct bit_decoder *coder,
         uint64_t buckets,
-        struct trie_kv *kvs, size_t n)
+        struct trie_kv *kvs, size_t kvs_n)
 {
     for (size_t i = 0, bucket = 0; bucket < info->buckets; ++bucket) {
         uint64_t mask = 1ULL << bucket;
         if (!(buckets & mask)) continue;
 
-        kvs[i++] = decode_bucket(info->decoder, bucket);
+        kvs[i++] = decode_bucket(*coder, bucket);
     }
 }
 
 void trie_kvs_extract(
         const struct trie_kvs_info *info,
-        struct trie_kv *kvs, size_t n)
+        struct trie_kv *kvs, size_t kvs_n,
+        const void *data, size_t data_n)
 {
-    if (n < info->buckets) {
+    if (kvs_n < info->buckets) {
         ilka_error("kvs array of size <%zu> requires at least <%zu> buckets",
-                n, info->buckets);
+                kvs_n, info->buckets);
     }
 
     uint64_t buckets = info->branches | info->tombstone | info->terminal;
 
+    struct bit_decoder coder;
+    bit_decoder_init(&coder, data, data_n);
+
     if (is_bucket_abs(info))
-        trie_kvs_extract_abs(info, buckets, kvs, n);
-    else trie_kvs_extract_packed(info, buckets, kvs, n);
+        trie_kvs_extract_abs(info, buckets, &coder, kvs, n);
+    else trie_kvs_extract_packed(info, buckets, &coder, kvs, n);
 }
 
 

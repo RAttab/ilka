@@ -36,8 +36,9 @@ inline void ilka_region_free(struct ilka_region *r, ilka_ptr ptr)
     free(ptr);
 }
 
-inline void * ilka_region_pin_r(struct ilka_region *r, ilka_ptr ptr) { return ptr; }
-inline void * ilka_region_pin_w(struct ilka_region *r, ilka_ptr ptr) {return ptr; }
-inline void ilka_region_pin_upgrade(struct ilka_region *r) {}
-inline void ilka_region_unpin_r(struct ilka_region *r) {}
-inline void ilka_region_unpin_w(struct ilka_region *r) {}
+inline void ilka_region_pin_read(struct ilka_region *r) {}
+inline void * ilka_region_read(struct ilka_region *r, ilka_ptr ptr) { return ptr; }
+inline void ilka_region_unpin_read(struct ilka_region *r) {}
+
+inline void * ilka_region_pin_write(struct ilka_region *r, ilka_ptr ptr) { return ptr; }
+inline void ilka_region_unpin_write(struct ilka_region *r, void *ptr) {}

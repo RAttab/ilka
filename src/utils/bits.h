@@ -44,26 +44,3 @@ static size_t bitfield_next(uint64_t bf, size_t bit = 0)
     bf &= (1ULL << bit) -1;
     return ctz(bf);
 }
-
-
-// -----------------------------------------------------------------------------
-// bit coder
-// -----------------------------------------------------------------------------
-
-ostruct bit_decoder
-{
-    const uint64_t *data;
-    size_t size; // bytes
-    size_t pos;  // bits
-};
-uint64_t bit_decode(struct bit_decoder *coder, size_t bits);
-void bit_decode_skip(struct bit_decoder *coder, size_t bits);
-
-struct bit_encoder
-{
-    uint64_t *data;
-    size_t size; // bytes
-    size_t pos;  // bits
-};
-void bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits);
-void bit_encode_skip(struct bit_decoder *coder, size_t bits);
