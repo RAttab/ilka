@@ -17,7 +17,7 @@
 struct trie_kv
 {
     uint64_t key, val;
-    uint8_t terminal, tombstone;
+    uint8_t branch, terminal, tombstone;
 };
 
 struct trie_kvs_encode_info
@@ -34,14 +34,16 @@ struct trie_kvs_info
 {
     uint8_t key_len;
     uint8_t buckets;
+
+    uint8_t state_offset;
     uint8_t bucket_offset;
 
     struct trie_kvs_encode_info key;
     struct trie_kvs_encode_info val;
 
-    uint64_t branches;
-    uint64_t terminal;
-    uint64_t tombstone;
+    uint32_t branches;
+    uint32_t terminal;
+    uint32_t tombstone;
 };
 
 
@@ -64,11 +66,15 @@ void trie_kvs_extract(
         const void *data, size_t data_n);
 
 void trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
-
 int trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv);
 void trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n);
+
+void trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
+int trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv);
 void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n);
+
 void trie_kvs_rmv(struct trie_kvs_info *info, uint64_t key, void *data, size_t data_n);
+void trie_kvs_tombstone(struct trie_kvs_info *info, uint64_t key, void *data, size_t data_n);
 
 struct trie_kv trie_kvs_get(struct trie_kvs_info *info, struct trie_key_it *it);
 struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it);
