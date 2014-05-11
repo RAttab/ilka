@@ -9,7 +9,8 @@ Static layout:
 
    byte  bit  len  field                   f(x)
 
-      0    0    4  lock
+      0    0    1  lock
+           1    3  flags                   is_abs_buckets
            5    4  key.len                 x << 2
       1    0    4  key.bits                x << 2
            5    4  key.shift               x << 2
@@ -79,21 +80,36 @@ Todo:
 
 enum { STATIC_HEADER_SIZE = 6 };
 
-
 // -----------------------------------------------------------------------------
 // utils
 // -----------------------------------------------------------------------------
 
-static uint8_t is_bucket_abs(struct trie_kvs_info *info)
-{
-    return (1ULL << info->key.bits) > info->buckets;
-}
-
-static size_t key_abs_bucket(struct trie_kvs_info *info, uint64_t key)
+static size_t
+key_to_bucket(struct trie_kvs_info *info, uint64_t key)
 {
     uint64_t bucket = key >> info->key.shift;
     bucket &= (1ULL << info->key.bits) - 1;
     return bucket;
+}
+
+static enum trie_kvs_state
+get_bucket_state(struct trie_kvs_info *info, size_t bucket)
+{
+    size_t i = bucket > 32 ? 1 : 0;
+    uint64_t state = info->state[i];
+    return (state >> (bucket % 32 * 2)) & 0x3;
+}
+
+static void
+set_bucket_state(
+        struct trie_kvs_info *info, size_t bucket, enum trie_kvs_state s)
+{
+    uint64_t state = s;
+    size_t i = bucket > 32 ? 1 : 0;
+    size_t shift = (bucket % 32 * 2);
+
+    info->state[i] &= ~(0x3 << shift);
+    info->state[i] |= (state & 0x3) << shift;
 }
 
 
@@ -101,7 +117,8 @@ static size_t key_abs_bucket(struct trie_kvs_info *info, uint64_t key)
 // calc kvs
 // -----------------------------------------------------------------------------
 
-static void adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
+static void
+adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 {
     encode->shift &= 0x3;
 
@@ -116,9 +133,8 @@ static void adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
         ceil_div(64 - clz(encode->prefix) - encode->prefix_shift, 8) * 8;
 }
 
-static void calc_bits(
-        struct trie_kvs_info *info,
-        const struct trie_kv *kvs, size_t kvs_n)
+static void
+calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
 {
     uint64_t key_same = -1ULL;
     uint64_t val_same = -1ULL;
@@ -147,11 +163,20 @@ static void calc_bits(
     adjust_bits(&info->val, MAX_bitS);
 }
 
-static void calc_buckets(struct trie_kvs_info *info)
+static void
+calc_buckets(struct trie_kvs_info *info)
 {
     size_t leftover = ILKA_CACHE_LINE - STATIC_HEADER_SIZE;
     leftover -= info->key.prefix_bits;
     leftover -= info->val.prefix_bits;
+
+    size_t abs_buckets = 1ULL << info->key.bits;
+    size_t abs_avail = (leftover - abs_buckets * 2) / info->val.bits;
+    if (abs_avail >= abs_buckets) {
+        info->buckets = abs_buckets;
+        info->is_abs_buckets = 1;
+        return;
+    }
 
     size_t bucket_size = info->key.bits + info->val.bits;
 
@@ -162,7 +187,8 @@ static void calc_buckets(struct trie_kvs_info *info)
         info->buckets--;
 }
 
-void trie_kvs_info(
+void
+trie_kvs_info(
         struct trie_kvs_info *info, size_t key_len,
         const struct trie_kv *kvs, size_t kvs_n)
 {
@@ -183,7 +209,8 @@ void trie_kvs_info(
 // decode
 // -----------------------------------------------------------------------------
 
-static void decode_info(
+static void
+decode_info(
         struct bit_decoder *coder,
         struct trie_kvs_encode_info *encode,
         size_t max_bits)
@@ -195,9 +222,8 @@ static void decode_info(
     encode->prefix_shift = bit_decode(&coder, 4) << 2;
 }
 
-static void decode_prefix(
-        struct bit_decoder *coder,
-        struct trie_kvs_encode_info *encode)
+static void
+decode_prefix(struct bit_decoder *coder, struct trie_kvs_encode_info *encode)
 {
     if (!encode->prefix_bits) return;
 
@@ -205,55 +231,48 @@ static void decode_prefix(
     encode->prefix <<= (encode->prefix_shift + encode->bits);
 }
 
-static void decode_state(
-        struct bit_decoder *coder,
-        struct trie_kvs_info *info)
+static void
+decode_state(struct bit_decoder *coder, struct trie_kvs_info *info)
 {
-    size_t bits = ceil_div(info->buckets, 4);
-    uint64_t mask = (1 << bits) - 1;
+    size_t bits = ceil_div(info->buckets * 2, 4);
 
-    uint64_t state = bit_decode(coder, bits * 2);
-    uint32_t s0 = (state >> bits) & mask;
-    uint32_t s1 = state & mask;
-
-    info->branches  =  s0 & ~s1;
-    info->terminal  = ~s0 &  s1;
-    info->tombstone =  s0 &  s1;
+    // \todo need atomic consume semantics when decoding.
+    info->state[0] = bit_decode(coder, info->buckets <= 32 ? bits : 64);
+    info->state[1] = bit_decode(coder, info->buckets <= 32 ?    0 : bits - 64);
 }
 
-static struct trie_kv decode_bucket(
-        struct bit_decoder coder,
-        struct trie_kvs_info *info,
-        size_t bucket)
+static struct trie_kv
+decode_bucket(struct bit_decoder coder, struct trie_kvs_info *info, size_t bucket)
 {
     size_t bucket_bits = info->key.bits + info->val.bits;
     bit_decode_skip(&coder, bucket_bits * bucket);
 
-    uint64_t mask = 1ULL << bucket;
+    int state = bucket_state(info, bucket);
     struct trie_kv kv = {
-        .terminal = info->terminal & mask,
-        .tombstone = info->tombstone & mask
+        .branch = state == state_branch,
+        .terminal = state == state_terminal,
+        .tombstone = state == state_tombstone
     };
 
-    kv.key = bit_decode(&coder, info->key.bits) << info->key.shift;
-    kv.key |= info->key.prefix << info->key.bits;
+    kv.key = info->is_abs_buckets ? bucket : bit_decode(&coder, info->key.bits);
+    kv.key = (kv.key << info->key.shift) | info->key.prefix;
 
-    kv.val = bit_decode(&coder, info->val.bits) << info->val.shift;
-    kv.val |= info->val.prefix << info->val.bits;
+    kv.val = bit_decode(&coder, info->val.bits);
+    kv.val = (kv.val << info->val.shift) | info->val.prefix;
 
     return kv;
 }
 
-void trie_kvs_decode(
-        struct trie_kvs_info *info,
-        const void *data, size_t data_n)
+void
+trie_kvs_decode(struct trie_kvs_info *info, const void *data, size_t data_n)
 {
     struct bit_decoder coder;
     bit_decoder_init(&coder, data, data_n);
 
     memset(info, 0, sizeof(struct trie_kvs_info));
 
-    bit_decode_skip(&coder, 4); // lock.
+    bit_decode_skip(&coder, 1); // lock.
+    info->is_abs_buckets = bit.decode(&coder, 3);
     info->key_len = bit_decode(&coder, 4) << 2;
 
     decode_info(&coder, &info->key, info->key_len);
@@ -275,7 +294,8 @@ void trie_kvs_decode(
 // encode
 // -----------------------------------------------------------------------------
 
-static void encode_info(
+static void
+encode_info(
         struct bit_encoder *coder,
         struct trie_kvs_encode_info *encode,
         size_t max_bits)
@@ -287,9 +307,8 @@ static void encode_info(
     bit_encode(coder, encode->prefix_shift >> 2, 4);
 }
 
-static void encode_prefix(
-        struct bit_encoder *coder,
-        struct trie_kvs_encode_info *encode)
+static void
+encode_prefix(struct bit_encoder *coder, struct trie_kvs_encode_info *encode)
 {
     if (!encode->prefix_bits) return;
 
@@ -299,21 +318,16 @@ static void encode_prefix(
     bit_encode(coder, encode->prefix >> shift, bits);
 }
 
-static void encode_state(
-        struct bit_encoder *coder,
-        struct trie_kvs_info *info)
+static void
+encode_state(struct bit_encoder *coder, struct trie_kvs_info *info)
 {
-    if (coder->pos) ilka_error("misaligned state at pos <%zu>", coder->pos);
-
-    size_t bits = ceil_div(info->buckets, 4);
-
-    uint64_t s0 = info->branches | info->tombstone;
-    uint64_t s1 = info->terminal | info->tombstone;
-
-    bit_encode(coder, s0 << bits | s1, bits * 2);
+    size_t bits = ceil_div(info->buckets * 2, 4);
+    bit_encode(coder, info->state[0], info->buckets <= 32 ? bits : 64);
+    bit_encode(coder, info->state[1], info->buckets <= 32 ?    0 : bits - 64);
 }
 
-static void encode_bucket(
+static void
+encode_bucket(
         struct trie_encoder coder,
         struct trie_kvs_info *info,
         struct trie_kv kv, size_t bucket)
@@ -321,16 +335,13 @@ static void encode_bucket(
     size_t bucket_bits = info->key.bits + info->val.bits;
     bit_encode_skip(&coder, bucket_bits * bucket);
 
-    uint64_t mask = 1ULL << bucket;
-    if (kv.terminal) info->terminal |= mask;
-    else if (kv.tombstone) info->tombstone |= mask;
-    else info->branches |= mask;
-
-    bit_encode(&coder, kv.key >> info->key.shift, info->key.bits);
+    if (!info->is_abs_buckets)
+        bit_encode(&coder, kv.key >> info->key.shift, info->key.bits);
     bit_encode(&coder, kv.val >> info->val.shift, info->val.bits);
 }
 
-void trie_kvs_encode(
+void
+trie_kvs_encode(
         const struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t kvs_n,
         void *data, size_t data_n)
@@ -340,13 +351,21 @@ void trie_kvs_encode(
 
     memset(data, 0, data_n);
 
-    bit_encode_skip(&coder, 4); // lock.
+    bit_encode_skip(&coder, 1); // lock.
+
+    bit_encode(&coder, info->is_abs_buckets, 3);
     bit_encode(&coder, info->key_len >> 2, 4);
 
     encode_info(&coder, &info->key, info->key_len);
     encode_info(&coder, &info->val, 64);
 
     info->buckets = bit_encode(&coder, 8);
+
+    info->state = {};
+    for (size_t i = 0; i < kvs_n; ++i) {
+        size_t bucket = info->is_abs_buckets ? i : key_to_bucket(info, kvs[i].key);
+        set_bucket_state(info, bucket, kv.state);
+    }
 
     info->state_offset = bit_encoder_offset(&coder);
     encode_state(&code, info);
@@ -356,9 +375,8 @@ void trie_kvs_encode(
 
     info->bucket_offset = bit_encoder_offset(&coder);
 
-    int is_abs = is_bucket_abs(info);
     for (size_t i = 0; i < kvs_n; ++i) {
-        size_t bucket = is_abs ? i : key_abs_bucket(info, kvs[i].key);
+        size_t bucket = info->is_abs_buckets ? i : key_to_bucket(info, kvs[i].key);
         encode_bucket(*coder, info, kvs[i], bucket);
     }
 }
@@ -368,7 +386,8 @@ void trie_kvs_encode(
 // extract
 // -----------------------------------------------------------------------------
 
-size_t trie_kvs_extract(
+size_t
+trie_kvs_extract(
         const struct trie_kvs_info *info,
         struct trie_kv *kvs, size_t kvs_n,
         const void *data, size_t data_n)
@@ -402,7 +421,8 @@ size_t trie_kvs_extract(
 // add/set
 // -----------------------------------------------------------------------------
 
-void trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
+void
+trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 {
     for (size_t i = 0; i < kvs_n; ++i) {
         struct trie_kv *it = &kvs[i];
@@ -425,7 +445,8 @@ void trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
             kvs_n, (void*) kv.key);
 }
 
-void trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
+void
+trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 {
     for (size_t i = 0; i < kvs_n; ++i) {
         if (kv.key != kvs[i].key) continue;
@@ -442,15 +463,16 @@ void trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 // add/set inplace
 // -----------------------------------------------------------------------------
 
-static int can_add_bucket(struct trie_kvs_info *info, uint64_t key)
+static int
+can_add_bucket(struct trie_kvs_info *info, uint64_t key)
 {
     if (is_bucket_abs(info)) {
         uint64_t buckets = branches | terminal | tombstone;
     }
 }
 
-static int can_encode(
-        struct trie_kvs_encode_info *encode, uint64_t value, uint64_t max_bits)
+static int
+can_encode(struct trie_kvs_encode_info *encode, uint64_t value, uint64_t max_bits)
 {
     if (value & ((1 << encode->shift) - 1)) return 0;
 
@@ -460,14 +482,16 @@ static int can_encode(
     return 1;
 }
 
-int trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
+int
+trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
 {
     return can_add_bucket(info, kv.key)
         && can_encode(&info->key, kv.key, info->key_len)
         && can_encode(&info->val, kv.val, 64);
 }
 
-void trie_kvs_add_inplace(
+void
+trie_kvs_add_inplace(
         struct trie_kvs_info *info,
         struct trie_kv kv,
         void *data, size_t data_n)
@@ -475,36 +499,43 @@ void trie_kvs_add_inplace(
 
 }
 
-int trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv)
+int
+trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv)
 {
 
 }
 
-void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n)
-{
-
-}
-
-void trie_kvs_rmv(
-        struct trie_kvs_info *info,
-        uint64_t key,
+void
+trie_kvs_set(
+        struct trie_kvs_info *info, struct trie_kv kv,
         void *data, size_t data_n)
 {
 
 }
 
-struct trie_kv trie_kvs_get(struct trie_kvs_info *info, struct trie_key_it *it)
+void
+trie_kvs_remove(
+        struct trie_kvs_info *info, uint64_t key,
+        void *data, size_t data_n)
+{
+
+}
+
+struct trie_kv
+trie_kvs_get(struct trie_kvs_info *info, struct trie_key_it *it)
 {
 
 }
 
 
-struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it)
+struct trie_kv
+trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it)
 {
 
 }
 
-struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, struct trie_key_it *it)
+struct trie_kv
+trie_kvs_ub(struct trie_kvs_info *info, struct trie_key_it *it)
 {
 
 }
@@ -514,9 +545,10 @@ struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, struct trie_key_it *it)
 // burst
 // -----------------------------------------------------------------------------
 
-void trie_kvs_burst(
+void
+trie_kvs_burst(
         struct trie_kvs_burst_info *burst,
-        const struct trie_kv *kvs, size_t n)
+        const struct trie_kv *kvs, size_t kvs_n)
 {
 
 }

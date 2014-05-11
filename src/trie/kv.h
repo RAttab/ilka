@@ -14,10 +14,18 @@
 // kvs
 // -----------------------------------------------------------------------------
 
+enum trie_kvs_state
+{
+    trie_kvs_state_empty     = 0,
+    trie_kvs_state_branch    = 1,
+    trie_kvs_state_terminal  = 2,
+    trie_kvs_state_tombstone = 3,
+};
+
 struct trie_kv
 {
     uint64_t key, val;
-    uint8_t branch, terminal, tombstone;
+    enum trie_kvs_state state;
 };
 
 struct trie_kvs_encode_info
@@ -34,6 +42,7 @@ struct trie_kvs_info
 {
     uint8_t key_len;
     uint8_t buckets;
+    uint8_t is_abs_buckets;
 
     uint8_t state_offset;
     uint8_t bucket_offset;
@@ -41,9 +50,7 @@ struct trie_kvs_info
     struct trie_kvs_encode_info key;
     struct trie_kvs_encode_info val;
 
-    uint32_t branches;
-    uint32_t terminal;
-    uint32_t tombstone;
+    uint64_t state[2];
 };
 
 
@@ -73,8 +80,7 @@ void trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
 int trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv);
 void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n);
 
-void trie_kvs_rmv(struct trie_kvs_info *info, uint64_t key, void *data, size_t data_n);
-void trie_kvs_tombstone(struct trie_kvs_info *info, uint64_t key, void *data, size_t data_n);
+void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data, size_t data_n);
 
 struct trie_kv trie_kvs_get(struct trie_kvs_info *info, struct trie_key_it *it);
 struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it);
@@ -87,7 +93,7 @@ struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, struct trie_key_it *it);
 
 enum
 {
-    TRIE_KVS_MAX_BUCKETS = 32,
+    TRIE_KVS_MAX_BUCKETS = 64,
     TRIE_KVS_MAX_BURST_KV = TRIE_KVS_MAX_BUCKETS / 2;
 };
 
@@ -111,7 +117,7 @@ struct trie_kvs_burst_info
 
 void trie_kvs_burst(
         struct trie_kvs_burst_info *burst,
-        const struct trie_kv *kvs, size_t n);
+        const struct trie_kv *kvs, size_t kvs_n);
 
 
 
