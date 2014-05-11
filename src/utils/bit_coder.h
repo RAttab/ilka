@@ -32,7 +32,8 @@ struct bit_decoder
 };
 
 
-inline void bit_decoder_init(struct bit_decoder *coder, const uint64_t *data, size_t data_n)
+inline void
+bit_decoder_init(struct bit_decoder *coder, const uint64_t *data, size_t data_n)
 {
     *coder = {
         .start = data,
@@ -41,12 +42,14 @@ inline void bit_decoder_init(struct bit_decoder *coder, const uint64_t *data, si
     };
 }
 
-inline void bit_decoder_offset(struct bit_decoder *coder)
+inline void
+bit_decoder_offset(struct bit_decoder *coder)
 {
     return (coder->data - coder->start) * 8 + coder->pos;
 }
 
-inline uint64_t bit_decode(struct bit_decoder *coder, size_t bits)
+inline uint64_t
+bit_decode(struct bit_decoder *coder, size_t bits)
 {
     if (coder->size < ceil_div(bits, 8)) {
         ilka_error("decoding <%zu> bits with only <%zu> bytes available",
@@ -66,8 +69,8 @@ inline uint64_t bit_decode(struct bit_decoder *coder, size_t bits)
     return value & mask;
 }
 
-inline uint64_t bit_decode_atomic(
-        struct bit_decoder *coder, size_t bits, enum memory_model model)
+inline uint64_t
+bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_model model)
 {
     if (bits > 64 - coder->pos) {
         ilka_error("decoding <%zu> atomic bits with only <%d> bits available",
@@ -87,7 +90,8 @@ inline uint64_t bit_decode_atomic(
     return value & mask;
 }
 
-inline void bit_decode_skip(struct bit_decoder *coder, size_t bits)
+inline void
+bit_decode_skip(struct bit_decoder *coder, size_t bits)
 {
     if (size < ceil_div(bits, 8)) {
         ilka_error("skipping <%zu> bits with only <%zu> bytes available",
@@ -120,7 +124,8 @@ struct bit_encoder
     size_t pos;  // bits
 };
 
-inline void bit_encoder_init(struct bit_encoder *coder, const uint64_t *data, size_t data_n)
+inline void
+bit_encoder_init(struct bit_encoder *coder, uint64_t *data, size_t data_n)
 {
     *coder = {
         .start = data,
@@ -129,12 +134,14 @@ inline void bit_encoder_init(struct bit_encoder *coder, const uint64_t *data, si
     };
 }
 
-inline void bit_encoder_offset(struct bit_encoder *coder)
+inline void
+bit_encoder_offset(struct bit_encoder *coder)
 {
     return (coder->data - coder->start) * 8 + coder->pos;
 }
 
-inline void bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
+inline void
+bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
 {
     if (size < ceil_div(bits, 8)) {
         ilka_error("encoding <%zu> bits with only <%zu> bytes available",
@@ -154,7 +161,8 @@ inline void bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
 }
 
 
-inline void bit_encode_atomic(
+inline void
+bit_encode_atomic(
         struct bit_encoder *coder,
         uint64_t value, size_t bits,
         enum memory_model model)
@@ -175,7 +183,8 @@ inline void bit_encode_atomic(
     coder->pos = (coder->pos + bits) % sizeof(uint64_t);
 }
 
-inline void bit_encode_skip(struct bit_encode *coder, size_t bits)
+inline void
+bit_encode_skip(struct bit_encode *coder, size_t bits)
 {
     if (size < ceil_div(bits, 8)) {
         ilka_error("skipping <%zu> bits with only <%zu> bytes available",
