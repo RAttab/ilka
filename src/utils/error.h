@@ -25,3 +25,8 @@ void ilka_verror_errno(const char *file, int line, const char *fmt, ...)
 
 #define ilka_error_errno(...)                           \
     ilka_verror_errno(__FILE__, __LINE__, __VA_ARGS__)
+
+#define ilka_assert(p, ...)                     \
+    do {                                        \
+        if (!(p)) ilka_error(__VA_ARGS__);      \
+    } while (false)
