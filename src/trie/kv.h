@@ -72,6 +72,9 @@ void trie_kvs_extract(
         struct trie_kv *kvs, size_t kvs_n,
         const void *data, size_t data_n);
 
+void trie_kvs_lock(struct ilka_region *r, void* data);
+void trie_kvs_unlock(struct ilka_region *r, void* data);
+
 void trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
 int trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv);
 void trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n);

@@ -86,7 +86,11 @@ static ilka_ptr add_kv_inplace(
 {
     {
         void *node_p = ilka_region_pin_write(r, node);
+        trie_kvs_lock(r, node_p);
+
         trie_kvs_add_inplace(info, kv, node_p, ILKA_CACHE_LINE);
+
+        trie_kvs_unlock(r, node_p);
         ilka_region_unpin_write(r, node_p);
     }
 

@@ -56,6 +56,12 @@ Notes:
    - prefixes are omitted if their corresponding prefix_bits are 0. Note that
      neither prefix_len nor prefix_shift will be omitted. They will simply be 0.
 
+   - if is_abs_bucket is set then no keys are stored since they can be derived
+     from the bucket index.
+
+   - if !is_abs_bucket then multiple tombstoned buckets may be found for a
+     single key but only one non-tombstoned bucket exists at any given time.
+
 Todo:
 
    - make use of is_bucket_abs to avoid iterating over every buckets when
@@ -278,13 +284,13 @@ decode_bucket(
 
     /* atomic relaxed: we only need to ensure that the value is read
      * atomically. Ordering is ensured by the state bitfield. */
-    enum memory_order model = memory_order_relaxed;
+    enum memory_order order = memory_order_relaxed;
 
     if (info->is_abs_buckets) kv.key = bucket;
-    else kv.key = bit_decode_atomic(&coder, info->key.bits, model);
+    else kv.key = bit_decode_atomic(&coder, info->key.bits, order);
     kv.key = (kv.key << info->key.shift) | info->key.prefix;
 
-    kv.val = bit_decode_atomic(&coder, info->val.bits, memory_model_relaxed);
+    kv.val = bit_decode_atomic(&coder, info->val.bits, memory_order_relaxed);
     kv.val = (kv.val << info->val.shift) | info->val.prefix;
 
     return kv;
@@ -393,11 +399,11 @@ encode_bucket(
 
     /* atomic relaxed: we only need to ensure that that we write the entire
      * value in one instruction. Ordering is enforced by states. */
-    enum memory_order model = memory_order_relaxed;
+    enum memory_order order = memory_order_relaxed;
 
     if (!info->is_abs_buckets)
-        bit_encode_atomic(&coder, kv.key >> info->key.shift, info->key.bits, model);
-    bit_encode_atomic(&coder, kv.val >> info->val.shift, info->val.bits, model);
+        bit_encode_atomic(&coder, kv.key >> info->key.shift, info->key.bits, order);
+    bit_encode_atomic(&coder, kv.val >> info->val.shift, info->val.bits, order);
 }
 
 void
@@ -506,6 +512,22 @@ trie_kvs_extract(
     }
 
     return i;
+}
+
+
+// -----------------------------------------------------------------------------
+// lock
+// -----------------------------------------------------------------------------
+
+void
+trie_kvs_lock(struct ilka_region *r, void* data)
+{
+    ilka_region_lock(r, data, 0x1);
+}
+
+void trie_kvs_unlock(struct ilka_region *r, void* data)
+{
+    ilka_region_unlock(r, data, 0x1);
 }
 
 
