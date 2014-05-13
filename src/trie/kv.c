@@ -532,7 +532,11 @@ trie_kvs_lock(struct ilka_region *r, void* data)
     const enum memory_order fail = memory_order_relaxed;
 
     do {
-        if (old & mask) continue;
+        if (old & mask) {
+            old = ilka_atomic_load(*lock, memory_order_relaxed);
+            continue;
+        }
+
         new = old | mask;
     } while(!ilka_atomic_cmp_xchg(lock, &old, new, success, fail));
 }
