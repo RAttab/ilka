@@ -64,9 +64,6 @@ Notes:
 
 Todo:
 
-   - make use of is_bucket_abs to avoid iterating over every buckets when
-     searching for a bucket.
-
    - Could try to run the same compression but over ~ of the value. Choose which
      one compresses at the end. Unlikely to be worth it though.
 
@@ -519,11 +516,12 @@ trie_kvs_extract(
 // lock
 // -----------------------------------------------------------------------------
 
+static const uint8_t lock_mask = 0x1;
+
 void
-trie_kvs_lock(struct ilka_region *r, void* data)
+trie_kvs_lock(void* data, size_t)
 {
     uint8_t *lock = data;
-    uint8_t mask = 0x1;
 
     uint8_t new;
     uint8_t old = ilka_atomic_load(*lock, memory_order_relaxed);
@@ -532,22 +530,26 @@ trie_kvs_lock(struct ilka_region *r, void* data)
     const enum memory_order fail = memory_order_relaxed;
 
     do {
-        if (old & mask) {
+        if (old & lock_mask) {
             old = ilka_atomic_load(*lock, memory_order_relaxed);
             continue;
         }
 
-        new = old | mask;
+        new = old | lock_mask;
     } while(!ilka_atomic_cmp_xchg(lock, &old, new, success, fail));
 }
 
-void trie_kvs_unlock(struct ilka_region *r, void* data)
+void trie_kvs_unlock(void* data, size_t)
 {
     uint8_t *lock = data;
-    uint8_t mask = 0x1;
-
     uint8_t old = ilka_atomic_load(lock, memory_order_relaxed);
-    ilka_atomic_store(lock, order & ~mask, memory_order_release);
+    ilka_atomic_store(lock, order & ~lock_mask, memory_order_release);
+}
+
+void trie_kvs_clear_lock(void* data, size_)
+{
+    uint8_t *lock = data;
+    *lock &= ~lock_mask;
 }
 
 
