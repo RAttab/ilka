@@ -253,7 +253,7 @@ decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
     size_t b0 = info->buckets <= 32 ? bits : 64;
     size_t b1 = info->buckets <= 32 ?    0 : bits - 64;
 
-    // atomic acquire: states must be fully read before we read any buckets.
+    /* atomic acquire: states must be fully read before we read any buckets. */
     info->state[0] = bit_decode_atomic(coder, b0, memory_order_acquire);
     info->state[1] = bit_decode_atomic(coder, b1, memory_order_acquire);
 }
@@ -276,10 +276,15 @@ decode_bucket(
         .tombstone = state == state_tombstone
     };
 
-    kv.key = info->is_abs_buckets ? bucket : bit_decode(&coder, info->key.bits);
+    /* atomic relaxed: we only need to ensure that the value is read
+     * atomically. Ordering is ensured by the state bitfield. */
+    enum memory_order model = memory_order_relaxed;
+
+    if (info->is_abs_buckets) kv.key = bucket;
+    else kv.key = bit_decode_atomic(&coder, info->key.bits, model);
     kv.key = (kv.key << info->key.shift) | info->key.prefix;
 
-    kv.val = bit_decode(&coder, info->val.bits);
+    kv.val = bit_decode_atomic(&coder, info->val.bits, memory_model_relaxed);
     kv.val = (kv.val << info->val.shift) | info->val.prefix;
 
     return kv;
@@ -358,8 +363,8 @@ encode_state(
     bit_encoder_init(&coder, data, data_n);
     bit_encode_skip(coder, info->state_offset + bucket * 2);
 
-    // atomic release: make sure that any written buckets are visible before
-    // updating the state.
+    /* atomic release: make sure that any written buckets are visible before
+     * updating the state. */
     bit_encode_atomic(coder, state, 2, memory_order_release);
 }
 
@@ -386,13 +391,13 @@ encode_bucket(
     size_t bucket_bits = info->key.bits + info->val.bits;
     bit_encode_skip(&coder, info->bucket_offset + bucket_bits * bucket);
 
-    // atomic relaxed: we only need to ensure that that we write the entire
-    // value in one instruction. Ordering is enforced by states.
-    enum memory_order m = memory_order_relaxed;
+    /* atomic relaxed: we only need to ensure that that we write the entire
+     * value in one instruction. Ordering is enforced by states. */
+    enum memory_order model = memory_order_relaxed;
 
     if (!info->is_abs_buckets)
-        bit_encode_atomic(&coder, kv.key >> info->key.shift, info->key.bits, m);
-    bit_encode_atomic(&coder, kv.val >> info->val.shift, info->val.bits, m);
+        bit_encode_atomic(&coder, kv.key >> info->key.shift, info->key.bits, model);
+    bit_encode_atomic(&coder, kv.val >> info->val.shift, info->val.bits, model);
 }
 
 void
@@ -442,23 +447,29 @@ trie_kvs_encode(
 // -----------------------------------------------------------------------------
 
 static size_t
-find_key(struct trie_kvs_info *info, uint64_t key, const void *data, size_t data_n)
+find_bucket(
+        struct trie_kvs_info *info, uint64_t key,
+        const void *data, size_t data_n)
 {
-    if (info->is_abs_buckets) {
-        size_t bucket = key_to_bucket(info, key);
-        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
-        return kv.key == key ? bucket : 64;
-    }
+    if (info->is_abs_buckets) return key_to_bucket(key);
+
+    size_t match = 64;
 
     for (size_t bucket = next_bucket(info, 0);
          bucket < info->buckets;
          bucket = next_bucket(info, 0))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
-        if (kv.key == key) return bucket;
+
+        if (kv.key != key) continue;
+
+        /* there may be multiple tombstoned bucket for one key but there can
+         * only be one non-tomstoned bucket for a given key. */
+        if (kv.state != trie_kvs_state_tombstone) return bucket;
+        match = bucket;
     }
 
-    return 64;
+    return match;
 }
 
 
@@ -482,7 +493,16 @@ trie_kvs_extract(
          bucket < info->buckets;
          bucket = next_bucket(info, bucket + 1))
     {
-        kvs[i++] = decode_bucket(info, bucket, data, data_n);
+        int skip = 0;
+        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+
+        for (size_t j = 0; !skip && j < i; ++j) {
+            if (kv.key != kvs[j].key) continue;
+            if (kvs[j].state == trie_kvs_state_tombstone) kvs[j] = kv;
+            skip = 1;
+        }
+
+        if (!skip) kvs[i++] = kv;
     }
 
     return i;
@@ -521,7 +541,7 @@ static int
 can_add_bucket(struct trie_kvs_info *info, uint64_t key)
 {
     if (!info->is_abs_buckets)
-        return next_bucket(info, 0) >= info->buckets;
+        return next_bucket(info, 0) < info->buckets;
 
     size_t bucket = key_to_bucket(info, key);
     if (get_bucket_state(info, bucket) == trie_kvs_state_empty) return 1;
@@ -558,7 +578,6 @@ trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 {
     for (size_t i = 0; i < kvs_n; ++i) {
         if (kv.key != kvs[i].key) continue;
-
         kvs[i] = kv;
         return;
     }
@@ -578,10 +597,7 @@ trie_kvs_set_inplace(
         struct trie_kvs_info *info, struct trie_kv kv,
         void *data, size_t data_n)
 {
-    size_t bucket = !info->is_abs_buckets ?
-        find_bucket(info, 0, data, data_n) :
-        key_to_bucket(kv[i].key);
-
+    size_t bucket = find_bucket(info, 0, data, data_n);
     encode_bucket(info, bucket, kv, data, data_n);
     encode_state(info, bucket, kv.state, data, data_n);
 }
@@ -596,11 +612,13 @@ trie_kvs_remove(
         struct trie_kvs_info *info, uint64_t key,
         void *data, size_t data_n)
 {
-    size_t bucket = !info->is_abs_buckets ?
-        find_bucket(info, 0, data, data_n) :
-        key_to_bucket(kv[i].key);
+    size_t bucket = find_bucket(info, key, data, data_n);
+    ilka_assert(bucket < info->buckets, "removing empty bucket");
 
-    encode_state(info, bucket, trie_kvs_state_empty, data, data_n);
+    enum trie_kvs_state state = info->is_abs_buckets ?
+        trie_kvs_state_empty : trie_kvs_state_tombstone;
+
+    encode_state(info, bucket, state, data, data_n);
 }
 
 
