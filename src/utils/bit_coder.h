@@ -25,15 +25,15 @@
 
 struct bit_decoder
 {
-    const uint64_t *start;
-    const uint64_t *data;
+    const uint8_t *start;
+    const uint8_t *data;
     size_t size; // bytes
     size_t pos;  // bits
 };
 
 
 inline void
-bit_decoder_init(struct bit_decoder *coder, const uint64_t *data, size_t data_n)
+bit_decoder_init(struct bit_decoder *coder, const void *data, size_t data_n)
 {
     *coder = {
         .start = data,
@@ -48,67 +48,45 @@ bit_decoder_offset(struct bit_decoder *coder)
     return (coder->data - coder->start) * 8 + coder->pos;
 }
 
+inline void bit_decode_skip(struct bit_decoder *coder, size_t bits)
+{
+    ilka_assert(bits <= coder->size + coder->pos,
+            "skipping <%zu> bits with only <%zu> bits available",
+            bits, coder->size + pos);
+
+    coder->pos += bits;
+    coder->data += pos / 8;
+    coder->size -= pos / 8;
+    coder->pos %= 8;
+}
+
 inline uint64_t
 bit_decode(struct bit_decoder *coder, size_t bits)
 {
-    if (coder->size < ceil_div(bits, 8)) {
-        ilka_error("decoding <%zu> bits with only <%zu> bytes available",
-                coder->size, bits);
-    }
+    ilka_assert(bits <= coder->size + coder->pos,
+            "decoding <%zu> bits with only <%zu> bits available",
+            bits, coder->size + pos);
 
-    uint64_t value = *coder->data >> coder->pos;
-    uint64_t mask = (1 << bits) - 1;
+    uint64_t value = *((uint64_t*) coder->data);
+    value = (value >> coder->pos) & ((1 << bits) - 1);
 
-    if (bits + coder->pos >= 64) {
-        coder->data++;
-        coder->size -= sizeof(uint64_t);
-        value |= *coder->data << (64 - coder->pos);
-    }
-
-    coder->pos = (coder->pos + bits) % sizeof(uint64_t);
-    return value & mask;
+    bit_decode_skip(coder, bits);
+    return value;
 }
 
 inline uint64_t
 bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_model model)
 {
-    if (bits > 64 - coder->pos) {
-        ilka_error("decoding <%zu> atomic bits with only <%d> bits available",
-                bits, 64 - coder->pos);
-    }
+    ilka_assert(!coder->pos, "misaligned <%zu> atomic bit decode", coder->pos);
+    ilka_assert(bits <= coder->size + coder->pos,
+            "decoding <%zu> bits with only <%zu> bits available",
+            bits, coder->size + pos);
 
-    uint64_t value = ilka_atomic_load(coder->data, model);
-    value >>= coder->pos;
-    uint64_t mask = (1 << bits) - 1;
+    uint64_t value = ilka_atomic_load((uint64_t*) coder->data, model);
+    value = (value >> coder->pos) & ((1 << bits) - 1);
 
-    if (bits + coder->pos >= 64) {
-        coder->data++;
-        coder->size -= sizeof(uint64_t);
-    }
-
-    coder->pos = (coder->pos + bits) % sizeof(uint64_t);
-    return value & mask;
-}
-
-inline void
-bit_decode_skip(struct bit_decoder *coder, size_t bits)
-{
-    if (size < ceil_div(bits, 8)) {
-        ilka_error("skipping <%zu> bits with only <%zu> bytes available",
-                size, bits);
-    }
-
-    if (bits < (64 - coder->pos)) {
-        coder->pos += bits;
-        return;
-    }
-
-    bits -= 64 - coder->pos;
-
-    size_t inc = ceil_div(bits, 64);
-    coder->data += inc;
-    coder->size -= inc * sizeof(uint64_t);
-    coder->pos = bits % 64;
+    bit_decode_skip(coder, bits);
+    return value;
 }
 
 
@@ -118,14 +96,14 @@ bit_decode_skip(struct bit_decoder *coder, size_t bits)
 
 struct bit_encoder
 {
-    uint64_t *start;
-    uint64_t *data;
+    uint8_t *start;
+    uint8_t *data;
     size_t size; // bytes
     size_t pos;  // bits
 };
 
 inline void
-bit_encoder_init(struct bit_encoder *coder, uint64_t *data, size_t data_n)
+bit_encoder_init(struct bit_encoder *coder, void *data, size_t data_n)
 {
     *coder = {
         .start = data,
@@ -140,24 +118,34 @@ bit_encoder_offset(struct bit_encoder *coder)
     return (coder->data - coder->start) * 8 + coder->pos;
 }
 
+
+inline void
+bit_encode_skip(struct bit_encode *coder, size_t bits)
+{
+    ilka_assert(bits <= coder->size + coder->pos,
+            "skipping <%zu> bits with only <%zu> bits available",
+            bits, coder->size + pos);
+
+    coder->pos += bits;
+    coder->data += pos / 8;
+    coder->size -= pos / 8;
+    coder->pos %= 8;
+}
+
 inline void
 bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
 {
-    if (size < ceil_div(bits, 8)) {
-        ilka_error("encoding <%zu> bits with only <%zu> bytes available",
-                size, bits);
-    }
+    ilka_assert(bits <= coder->size + coder->pos,
+            "encoding <%zu> bits with only <%zu> bits available",
+            bits, coder->size + pos);
 
-    value &= (1 << bits) - 1;
-    *data |= value << coder->pos;
+    uint64_t mask = ((1ULL << bits) - 1) << coder->pos;
+    value = (value << coder->pos) & mask;
 
-    if (bits + coder->pos >= 64) {
-        coder->data++;
-        coder->size -= sizeof(uint64_t);
-        *coder->data |= value >> (64 - coder->pos);
-    }
+    uint64_t* p = (uint64_t*) coder->data;
+    *p = (*p & ~mask) | value;
 
-    coder->pos = (coder->pos + bits) % sizeof(uint64_t);
+    bit_encode_skip(coder, bits);
 }
 
 
@@ -167,39 +155,16 @@ bit_encode_atomic(
         uint64_t value, size_t bits,
         enum memory_model model)
 {
-    if (bits < 64 - coder->pos) {
-        ilka_error("encoding <%zu> atomic bits with only <%d> bits available",
-                bits, 64 - coder->pos);
-    }
+    ilka_assert(!coder->pos, "misaligned <%zu> atomic bit encode", coder->pos);
+    ilka_assert(bits <= coder->size + coder->pos,
+            "encoding <%zu> bits with only <%zu> bits available",
+            bits, coder->size + pos);
 
-    value &= (1 << bits) - 1;
-    (void) ilka_atom_or_fetch(&coder->data, value << coder->pos, model);
+    uint64_t mask = ((1ULL << bits) - 1) << coder->pos;
+    value = (value << coder->pos) & mask;
 
-    if (bits + coder->pos >= 64) {
-        coder->data++;
-        coder->size -= sizeof(uint64_t);
-    }
+    uint64_t* p = (uint64_t*) coder->data;
+    ilka_atomic_store(p, (*p & ~mask) | value, model);
 
-    coder->pos = (coder->pos + bits) % sizeof(uint64_t);
-}
-
-inline void
-bit_encode_skip(struct bit_encode *coder, size_t bits)
-{
-    if (size < ceil_div(bits, 8)) {
-        ilka_error("skipping <%zu> bits with only <%zu> bytes available",
-                size, bits);
-    }
-
-    if (bits < (64 - coder->pos)) {
-        coder->pos += bits;
-        return;
-    }
-
-    bits -= 64 - coder->pos;
-
-    size_t inc = ceil_div(bits, 64);
-    coder->data += inc;
-    coder->size -= inc * sizeof(uint64_t);
-    coder->pos = bits % 64;
+    bit_encode_skip(coder, bits);
 }
