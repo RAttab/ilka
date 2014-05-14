@@ -77,7 +77,6 @@ bit_decode(struct bit_decoder *coder, size_t bits)
 inline uint64_t
 bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_model model)
 {
-    ilka_assert(!coder->pos, "misaligned <%zu> atomic bit decode", coder->pos);
     ilka_assert(bits <= coder->size + coder->pos,
             "decoding <%zu> bits with only <%zu> bits available",
             bits, coder->size + pos);
@@ -155,7 +154,6 @@ bit_encode_atomic(
         uint64_t value, size_t bits,
         enum memory_model model)
 {
-    ilka_assert(!coder->pos, "misaligned <%zu> atomic bit encode", coder->pos);
     ilka_assert(bits <= coder->size + coder->pos,
             "encoding <%zu> bits with only <%zu> bits available",
             bits, coder->size + pos);
