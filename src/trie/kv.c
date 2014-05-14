@@ -59,9 +59,6 @@ Notes:
    - if is_abs_bucket is set then no keys are stored since they can be derived
      from the bucket index.
 
-   - if !is_abs_bucket then multiple tombstoned buckets may be found for a
-     single key but only one non-tombstoned bucket exists at any given time.
-
 Todo:
 
    - Could try to run the same compression but over ~ of the value. Choose which
