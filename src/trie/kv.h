@@ -34,6 +34,7 @@ struct trie_kvs_encode_info
     uint8_t shift;
     uint8_t prefix_bits;
     uint8_t prefix_shift;
+    uint8_t padding;
     uint64_t prefix;
 };
 
@@ -104,13 +105,13 @@ enum
 
 struct trie_kvs_burst_suffix
 {
-    uint8_t size;
+    uint8_t key_len;
     struct trie_kv kvs[TRIE_KVS_MAX_BURST_KV];
 };
 
 struct trie_kvs_burst_info
 {
-    uint8_t size;
+    uint8_t key_len;
 
     uint8_t prefix_bits;
     struct trie_kv prefix[TRIE_KVS_MAX_BURST_KV];

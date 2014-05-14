@@ -178,6 +178,14 @@ calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
 
     adjust_bits(&info->key, info->key_len);;
     adjust_bits(&info->val, MAX_bitS);
+
+    if ((info->key.bits == 64) ^ (info->val.bits == 64)) {
+        if ((info->key.bits % 8) ^ (info->val.bits % 8)) {
+            if (info->key.bits == 64)
+                info->val.pad = 8 - (info->val.bits % 8);
+            else info->key.pad = 8 - (info->key.bits % 8);
+        }
+    }
 }
 
 static void
@@ -283,12 +291,16 @@ decode_bucket(
      * atomically. Ordering is ensured by the state bitfield. */
     enum memory_order order = memory_order_relaxed;
 
-    if (info->is_abs_buckets) kv.key = bucket;
-    else kv.key = bit_decode_atomic(&coder, info->key.bits, order);
+    if (!info->is_abs_buckets) {
+        kv.key = bit_decode_atomic(&coder, info->key.bits, order);
+        bit_decode_skip(info->key.pad);
+    }
+    else kv.key = bucket;
     kv.key = (kv.key << info->key.shift) | info->key.prefix;
 
     kv.val = bit_decode_atomic(&coder, info->val.bits, memory_order_relaxed);
     kv.val = (kv.val << info->val.shift) | info->val.prefix;
+    bit_decode_skip(info->val.pad);
 
     return kv;
 }
@@ -398,9 +410,13 @@ encode_bucket(
      * value in one instruction. Ordering is enforced by states. */
     enum memory_order order = memory_order_relaxed;
 
-    if (!info->is_abs_buckets)
+    if (!info->is_abs_buckets) {
         bit_encode_atomic(&coder, kv.key >> info->key.shift, info->key.bits, order);
+        bit_decode_skip(info->key.pad);
+    }
+
     bit_encode_atomic(&coder, kv.val >> info->val.shift, info->val.bits, order);
+    bit_decode_skip(info->val.pad);
 }
 
 void
@@ -526,8 +542,8 @@ trie_kvs_lock(void* data, size_t)
     uint8_t new;
     uint8_t old = ilka_atomic_load(*lock, memory_order_relaxed);
 
-    const enum memory_order success = memory_order_release;
     const enum memory_order fail = memory_order_relaxed;
+    const enum memory_order success = memory_order_acquire;
 
     do {
         if (old & lock_mask) {
