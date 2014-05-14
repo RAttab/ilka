@@ -95,8 +95,8 @@ key_to_bucket(struct trie_kvs_info *info, uint64_t key)
 static size_t
 calc_bucket_size(struct trie_kvs_info *info)
 {
-    return info->key.bits + info->key.padding
-        + info->val.bits + info->val.padding;
+    size_t size = info->is_abs_buckets ? 0 : info->key.bits + info->key.padding;
+    return size+ info->val.bits + info->val.padding;
 }
 
 static enum trie_kvs_state
@@ -338,7 +338,6 @@ decode_bucket(
 
     kv.val = bit_decode_atomic(&coder, info->val.bits, memory_order_relaxed);
     kv.val = (kv.val << info->val.shift) | info->val.prefix;
-    bit_decode_skip(info->val.pad);
 
     return kv;
 }
@@ -456,8 +455,30 @@ encode_bucket(
     }
 
     bit_encode_atomic(&coder, kv.val >> info->val.shift, info->val.bits, order);
-    bit_decode_skip(info->val.pad);
 }
+
+static void
+encode_bucket_value(
+        struct trie_kvs_info *info,
+        size_t bucket, uint64_t value,
+        void *data, size_t data_n)
+{
+    struct bit_encoder coder;
+    bit_encoder_init(&coder, data, data_n);
+
+    size_t bucket_bits = calc_bucket_size(info);
+    bit_encode_skip(&coder, info->bucket_offset + bucket_bits * bucket);
+
+    if (!info->is_abs_buckets)
+        bit_encode_skip(&coder, info->key.bits + info->key.padding);
+
+    /* atomic release: if we're only writting the value then we're not updating
+     * the state which means that we need to make it immediately visible to
+     * readers. */
+    enum memory_order order = memory_order_release;
+    bit_encode_atomic(&coder, value >> info->val.shift, info->val.bits, order);
+}
+
 
 void
 trie_kvs_encode(
@@ -752,7 +773,7 @@ trie_kvs_set_inplace(
         void *data, size_t data_n)
 {
     size_t bucket = find_bucket(info, 0, data, data_n);
-    encode_bucket(info, bucket, kv, data, data_n);
+    encode_bucket_value(info, bucket, kv.val, data, data_n);
     encode_state(info, bucket, kv.state, data, data_n);
 }
 
