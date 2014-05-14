@@ -592,7 +592,6 @@ trie_kvs_ub(
     }
 
     return match;
-
 }
 
 
@@ -786,8 +785,39 @@ trie_kvs_remove(
 
 void
 trie_kvs_burst(
-        struct trie_kvs_burst_info *burst,
+        struct trie_kvs_burst_info *burst, size_t key_len,
         const struct trie_kv *kvs, size_t kvs_n)
 {
+    burst->prefix_bits = burst->suffix_bits = key_len / 2;
+    ilka_assert(burst->prefix_bits + burst->suffix_bits == key_len,
+            "misaligned burst key len <%zu>", key_len);
 
+    burst->prefixes = 0;
+    memset(&burst->prefix, 0, sizeof(burst->prefix));
+    memset(&burst->suffix, 0, sizeof(burst->suffix));
+
+    uint64_t prefix_mask = (1ULL << burst->prefix_bits) - 1;
+    uint64_t suffix_mask = (1ULL << burst->suffix_bits) - 1;
+
+    for (size_t i = 0; i < kvs_n; ++i) {
+        uint64_t prefix = (kvs[i].key >> burst->suffix_bits) & prefix_mask;
+        uint64_t suffix = kvs[i].key & suffix_mask;
+
+        size_t j;
+        for (j = 0; j < burst->prefixes; ++j) {
+            if (burst->prefix[j].key == prefix) break;
+        }
+
+        if (j == burst->prefixes) {
+            burst->prefix[j].key = { .key = prefix, .state = trie_kvs_state_branch };
+            burst->prefixes++;
+        }
+
+        size_t k = burst->suffix[j].size++;
+        burst->suffix[j].kvs[k] = {
+            .key = suffix,
+            .val = kvs[i].val,
+            .state = kvs[i].state
+        };
+    }
 }

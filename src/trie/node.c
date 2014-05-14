@@ -39,21 +39,15 @@ static ilka_ptr burst_write(
 }
 
 static ilka_ptr burst(
-        struct ilka_region *r,
+        struct ilka_region *r, size_t key_len,
         const struct trie_kv *kvs, size_t n)
 {
     struct trie_kvs_burst_info burst;
-    trie_kvs_burst(&burst, kvs, n);
+    trie_kvs_burst(&burst, key_len, kvs, n);
 
-    for (size_t i = 0; i < burst.size; ++i) {
-        if (burst.prefix[i].is_terminal) continue;
-
-        if (!burst[i].size)
-            ilka_error("empty non-terminal bursted bucket");
-
-        ilka_ptr dest = burst_write(burst[i].kvs, burst[i].size);
-        burst.prefix[i].v = dest;
-        ilka_region_unpin(dest);
+    for (size_t i = 0; i < burst.prefixes; ++i) {
+        burst.prefix[i].val =
+            burst_write(burst.suffix[i].kvs, burst.suffix[i].size);
     }
 
     return burst_write(r, burst.prefix, burst.size):
@@ -75,7 +69,7 @@ static ilka_ptr add_kv(
 
     if (trie_kvs_info(&compressed, kvs, n))
          dest = write(r, &compressed, kvs, n);
-    else dest = burst(r, kvs, n);
+    else dest = burst(r, info->key_len, kvs, n);
 
     return dest;
 }
