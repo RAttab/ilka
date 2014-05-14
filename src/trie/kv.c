@@ -123,7 +123,7 @@ set_bucket_state(
 }
 
 static size_t
-next_bucket(struct trie_kvs_info *info, size_t bucket)
+next_bucket_impl(struct trie_kvs_info *info, size_t bucket)
 {
     if (bucket <= 32) {
         size_t bit = bitfield_next(info->state[0], bucket * 2) / 2;
@@ -133,7 +133,37 @@ next_bucket(struct trie_kvs_info *info, size_t bucket)
     }
     else bucket %= 32;
 
-    return bit_field_next(info->state[1], bucket * 2) / 2;
+    return bitfield_next(info->state[1], bucket * 2) / 2;
+}
+
+static size_t
+next_bucket(struct trie_kvs_info *info, size_t bucket)
+{
+    while (bucket < info->buckets) {
+        bucket = next_bucket_impl(info, bucket);
+        if (get_bucket_state(bucket) != trie_kvs_state_tombstone) break;
+    }
+
+    return bucket;
+}
+
+static size_t
+next_empty_bucket_impl(uint64_t bf)
+{
+    const uint64_t mask = 0x5555555555555555ULL;
+
+    uint64_t s = ((bf >> 1) | bf) & mask;
+    return ctz(~s) / 2;
+}
+
+static size_t
+next_empty_bucket(struct trie_kvs_info *info)
+{
+    size_t bucket = next_empty_bucket_impl(info->states[0]);
+    if (bucket < 32) return bucket;
+
+    if (info->buckets <= 32) return info->buckets;
+    return next_empty_bucket_impl(info->states[1]) + 32;
 }
 
 
@@ -475,7 +505,7 @@ trie_kvs_encode(
 
 
 // -----------------------------------------------------------------------------
-// find key
+// read kvs
 // -----------------------------------------------------------------------------
 
 static size_t
@@ -483,25 +513,86 @@ find_bucket(
         struct trie_kvs_info *info, uint64_t key,
         const void *data, size_t data_n)
 {
-    if (info->is_abs_buckets) return key_to_bucket(key);
-
-    size_t match = 64;
+    if (info->is_abs_buckets) return key_to_bucket(info, key);
 
     for (size_t bucket = next_bucket(info, 0);
          bucket < info->buckets;
          bucket = next_bucket(info, 0))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        if (kv.key == key) return bucket;
+    }
+}
 
-        if (kv.key != key) continue;
+struct trie_kv
+trie_kvs_get(
+        struct trie_kvs_info *info, uint64_t key,
+        const void *data, size_t data_n)
+{
+    if (info->is_abs_buckets) return key_to_bucket(info, key);
 
-        /* there may be multiple tombstoned bucket for one key but there can
-         * only be one non-tomstoned bucket for a given key. */
-        if (kv.state != trie_kvs_state_tombstone) return bucket;
-        match = bucket;
+    for (size_t bucket = next_bucket(info, 0);
+         bucket < info->buckets;
+         bucket = next_bucket(info, 0))
+    {
+        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        if (kv.key == key) return kv;
+    }
+
+    return { .state = trie_kvs_state_empty };
+}
+
+struct trie_kv
+trie_kvs_lb(
+        struct trie_kvs_info *info, uint64_t key,
+        const void *data, size_t data_n)
+{
+    /* \todo add a is_abs_bucket shortcut by implementing a prev_bucket util */
+
+    struct trie_kv match = { .key = 0, .state = trie_kvs_state_empty };
+
+    for (size_t bucket = next_bucket(info, 0);
+         bucket < info->buckets;
+         bucket = next_bucket(info, 0))
+    {
+        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        if (kv.key > key) continue;
+        if (kv.key < match.key) continue;
+
+        if (kv.key == key) return kv;
+        match = kv;
     }
 
     return match;
+}
+
+struct trie_kv
+trie_kvs_ub(
+        struct trie_kvs_info *info, uint64_t key,
+        const void *data, size_t data_n)
+{
+    struct trie_kv match = { .key = 0, .state = trie_kvs_state_empty };
+
+    if (info->is_abs_buckets) {
+        size_t bucket = next_bucket(info, key_to_bucket(info, key));
+        if (bucket >= 64) return match;
+        return decode_bucket(info, bucket, data, data_n);
+    }
+
+    for (size_t bucket = next_bucket(info, 0);
+         bucket < info->buckets;
+         bucket = next_bucket(info, 0))
+    {
+        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        if (kv.key > key) continue;
+        if (kv.key < match.key) continue;
+
+        if (kv.key == key) return kv;
+        match = kv;
+    }
+
+    return match;
+
 }
 
 
@@ -525,16 +616,7 @@ trie_kvs_extract(
          bucket < info->buckets;
          bucket = next_bucket(info, bucket + 1))
     {
-        int skip = 0;
-        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
-
-        for (size_t j = 0; !skip && j < i; ++j) {
-            if (kv.key != kvs[j].key) continue;
-            if (kvs[j].state == trie_kvs_state_tombstone) kvs[j] = kv;
-            skip = 1;
-        }
-
-        if (!skip) kvs[i++] = kv;
+        kvs[i++] = decode_bucket(info, bucket, data, data_n);
     }
 
     return i;
@@ -613,13 +695,13 @@ trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 static int
 can_add_bucket(struct trie_kvs_info *info, uint64_t key)
 {
-    if (!info->is_abs_buckets)
-        return next_bucket(info, 0) < info->buckets;
+    if (info->is_abs_buckets) {
+        size_t bucket = key_to_bucket(info, key);
+        if (get_bucket_state(info, bucket) == trie_kvs_state_empty) return 1;
+        ilka_error("trying to add duplicate key <%p>", (void*) key);
+    }
 
-    size_t bucket = key_to_bucket(info, key);
-    if (get_bucket_state(info, bucket) == trie_kvs_state_empty) return 1;
-
-    ilka_error("trying to add duplicate key <%p>", (void*) key);
+    return next_empty_bucket(info) < info->buckets;
 }
 
 int
@@ -636,7 +718,10 @@ trie_kvs_add_inplace(
         struct trie_kv kv,
         void *data, size_t data_n)
 {
-    size_t bucket = !info->is_abs_buckets ? next_bucket(info, 0) : key_to_bucket(kv[i].key);
+    size_t bucket = info->is_abs_buckets ?
+        key_to_bucket(info, kv[i].key) :
+        next_empty_bucket(info);
+
     encode_bucket(info, bucket, kv, data, data_n);
     encode_state(info, bucket, kv.state, data, data_n);
 }
@@ -692,30 +777,6 @@ trie_kvs_remove(
         trie_kvs_state_empty : trie_kvs_state_tombstone;
 
     encode_state(info, bucket, state, data, data_n);
-}
-
-
-// -----------------------------------------------------------------------------
-// read
-// -----------------------------------------------------------------------------
-
-struct trie_kv
-trie_kvs_get(struct trie_kvs_info *info, struct trie_key_it *it)
-{
-
-}
-
-
-struct trie_kv
-trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it)
-{
-
-}
-
-struct trie_kv
-trie_kvs_ub(struct trie_kvs_info *info, struct trie_key_it *it)
-{
-
 }
 
 

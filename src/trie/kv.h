@@ -73,6 +73,10 @@ void trie_kvs_extract(
         struct trie_kv *kvs, size_t kvs_n,
         const void *data, size_t data_n);
 
+struct trie_kv trie_kvs_get(struct trie_kvs_info *info, uint64_t key, const void *data, size_t data_n);
+struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data, size_t data_n);
+struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data, size_t data_n);
+
 void trie_kvs_lock(void* data, size_t data_n);
 void trie_kvs_unlock(void* data, size_t data_n);
 void trie_kvs_clear_lock(void* data, size_t data_n);
@@ -86,10 +90,6 @@ int trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv);
 void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n);
 
 void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data, size_t data_n);
-
-struct trie_kv trie_kvs_get(struct trie_kvs_info *info, struct trie_key_it *it);
-struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, struct trie_key_it *it);
-struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, struct trie_key_it *it);
 
 
 // -----------------------------------------------------------------------------
