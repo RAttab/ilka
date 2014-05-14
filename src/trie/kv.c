@@ -95,6 +95,13 @@ key_to_bucket(struct trie_kvs_info *info, uint64_t key)
     return bucket;
 }
 
+static size_t
+calc_bucket_size(struct trie_kvs_info *info)
+{
+    return info->key.bits + info->key.padding
+        + info->val.bits + info->val.padding;
+}
+
 static enum trie_kvs_state
 get_bucket_state(struct trie_kvs_info *info, size_t bucket)
 {
@@ -151,6 +158,17 @@ adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 }
 
 static void
+calc_padding(struct trie_kvs_info *info)
+{
+    if (!((info->key.bits == 64) ^ (info->val.bits == 64))) return;
+    if (!((info->key.bits % 8) ^ (info->val.bits % 8))) return;
+
+    if (info->key.bits == 64)
+        info->val.pad = 8 - (info->val.bits % 8);
+    else info->key.pad = 8 - (info->key.bits % 8);
+}
+
+static void
 calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
 {
     uint64_t key_same = -1ULL;
@@ -178,14 +196,6 @@ calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
 
     adjust_bits(&info->key, info->key_len);;
     adjust_bits(&info->val, MAX_bitS);
-
-    if ((info->key.bits == 64) ^ (info->val.bits == 64)) {
-        if ((info->key.bits % 8) ^ (info->val.bits % 8)) {
-            if (info->key.bits == 64)
-                info->val.pad = 8 - (info->val.bits % 8);
-            else info->key.pad = 8 - (info->key.bits % 8);
-        }
-    }
 }
 
 static void
@@ -203,7 +213,7 @@ calc_buckets(struct trie_kvs_info *info)
         return;
     }
 
-    size_t bucket_size = info->key.bits + info->val.bits;
+    size_t bucket_size = calc_bucket_size(info);
 
     info->buckets = leftover / bucket_size;
     if (info->buckets > 32) info->buckets = 32;
@@ -224,6 +234,7 @@ trie_kvs_info(
     memset(info, 0, sizeof(struct trie_kvs_info));
     info->key_len = key_len;
     calc_bits(info, kvs, kvs_n);
+    calc_padding(info);
     calc_buckets(info);
 
     return kvs_n <= info->buckets;
@@ -277,7 +288,7 @@ decode_bucket(
     struct bit_decoder coder;
     bit_decoder_init(&coder, data, data_n);
 
-    size_t bucket_bits = info->key.bits + info->val.bits;
+    size_t bucket_bits = calc_bucket_size(info);
     bit_decode_skip(&coder, info->bucket_offset + bucket_bits * bucket);
 
     int state = bucket_state(info, bucket);
@@ -319,6 +330,8 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data, size_t data_n)
 
     decode_info(&coder, &info->key, info->key_len);
     decode_info(&coder, &info->val, 64);
+
+    calc_padding(info);
 
     info->buckets = bit_decode(&coder, 8);
 
@@ -403,7 +416,7 @@ encode_bucket(
     struct bit_encoder coder;
     bit_encoder_init(&coder, data, data_n);
 
-    size_t bucket_bits = info->key.bits + info->val.bits;
+    size_t bucket_bits = calc_bucket_size(info);
     bit_encode_skip(&coder, info->bucket_offset + bucket_bits * bucket);
 
     /* atomic relaxed: we only need to ensure that that we write the entire
