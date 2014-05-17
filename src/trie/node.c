@@ -10,8 +10,105 @@
 
 
 // -----------------------------------------------------------------------------
+// read
+// -----------------------------------------------------------------------------
+
+int
+trie_node_get(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, uint64_t *value)
+{
+    void *p_node = ilka_region_read(r, node);
+
+    struct trie_kvs_info info;
+    trie_kvs_decode(&info, p_node);
+
+    int is_key_end = ilka_key_end(key);
+    if (is_key_end) {
+        if (!info.value_bits) return 0;
+        *value = info.value;
+        return 1;
+    }
+
+    uint64_t key = ilka_key_pop(&key, info->key_len);
+    struct trie_kv kv = trie_kvs_get(&info, key, p_node);
+
+    if (kv.state == trie_kvs_state_branch)
+        return trie_node_get(r, kv.val, key, value);
+
+    if (kv.state == trie_kvs_state_value) {
+        if (is_key_end) return 0;
+        *value = info.value;
+        return 1;
+    }
+
+    if (kv.state == trie_kvs_state_empty) return 0;
+
+    ilka_error("expected <%d> got <%d>", trie_kvs_state_branch, kv.state);
+}
+
+void
+trie_node_lb(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, struct ilka_key_it lb)
+{
+
+}
+
+void
+trie_node_ub(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, struct ilka_key_it ub)
+{
+
+}
+
+int
+trie_node_next(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, struct ilka_key_it prev)
+{
+
+}
+
+int
+trie_node_prev(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, struct ilka_key_it next)
+{
+
+}
+
+int
+trie_node_add(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, uint64_t value)
+{
+
+}
+
+int
+trie_node_cmp_xchg(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, uint64_t *expected, uint64_t desired)
+{
+
+}
+
+int
+trie_node_cmp_rmv(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, uint64_t *expected)
+{
+
+}
+
+
+
+// -----------------------------------------------------------------------------
 // add kv
 // -----------------------------------------------------------------------------
+
 
 static ilka_ptr write(
         struct ilka_region *r,
