@@ -41,23 +41,30 @@ struct trie_kvs_encode_info
 
 struct trie_kvs_info
 {
-    uint8_t key_len;
     uint8_t size;
+    uint8_t key_len;
+
     uint8_t buckets;
     uint8_t is_abs_buckets;
 
+    uint8_t value_bits;
+    uint8_t value_shift;
+
+    uint8_t value_offset;
     uint8_t state_offset;
     uint8_t bucket_offset;
 
     struct trie_kvs_encode_info key;
     struct trie_kvs_encode_info val;
 
+    uint64_t value;
     uint64_t state[2];
 };
 
 
 int trie_kvs_info(
         struct trie_kvs_info *info, size_t key_len,
+        int has_value, uint64_t value,
         const struct trie_kv *kvs, size_t kvs_n);
 
 void trie_kvs_decode(struct trie_kvs_info *info);
@@ -87,6 +94,9 @@ void trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *d
 void trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
 int trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv);
 void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data);
+
+int trie_kvs_can_set_value_inplace(struct trie_kvs_info *info, uint64_t value);
+void trie_kvs_set_value_inplace(struct trie_kvs_info *info, uint64_t value);
 
 void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data);
 

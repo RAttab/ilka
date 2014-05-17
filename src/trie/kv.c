@@ -11,21 +11,24 @@ Static layout:
 
       0    0    1  lock
            1    3  flags                   is_abs_buckets
-           5    4  key.len                 x << 2
+           4    4  key.len                 x << 2
       1    0    4  key.bits                x << 2
-           5    4  key.shift               x << 2
+           4    4  key.shift               x << 2
       2    0    4  key.prefix_bits         x << 3
-           5    4  key.prefix_shift        x << 2
+           4    4  key.prefix_shift        x << 2
       3    0    4  val.bits                x << 2
-           5    4  val.shift               x << 2
+           4    4  val.shift               x << 2
       4    0    4  val.prefix_bits         x << 3
-           5    4  val.prefix_shift        x << 2
-      5    0    8  buckets
+           4    4  val.prefix_shift        x << 2
+      5    0    4  value_bits              x << 2
+           4    4  value_shift             x << 2
+      6    0    8  buckets
 
 Dynamic layout:
 
    field        range   len
 
+   value        [0, 7]  value_bits - value_shift;
    key.prefix   [0, 7]  key.prefix_bits - key.prefix_shift
    val.prefix   [0, 7]  val.prefix_bits - val.prefix_shift
    state        [1, 8]  buckets * 2
@@ -78,7 +81,7 @@ Todo:
 // constants
 // -----------------------------------------------------------------------------
 
-enum { STATIC_HEADER_SIZE = 6 };
+enum { STATIC_HEADER_SIZE = 7 };
 
 // -----------------------------------------------------------------------------
 // utils
@@ -98,7 +101,7 @@ calc_bucket_size(struct trie_kvs_info *info)
     size_t size = info->is_abs_buckets ? 0 : info->key.bits + info->key.padding;
     return size+ info->val.bits + info->val.padding;
 }
-
+n
 static enum trie_kvs_state
 get_bucket_state(struct trie_kvs_info *info, size_t bucket)
 {
@@ -169,6 +172,14 @@ next_empty_bucket(struct trie_kvs_info *info)
 // -----------------------------------------------------------------------------
 
 static void
+calc_value(uint64_t value, uint8_t *bits, uint8_t *shift)
+{
+    *shift = ctz(value) & 0x3;
+    *bits = 64 - clz(value >> *shift);
+    *bits = ceil_div(*bits, 8) * 8;
+}
+
+static void
 adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 {
     encode->shift &= 0x3;
@@ -178,21 +189,7 @@ adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 
     encode->prefix_bits = max_bits - encode->bits;
     encode->prefix &= ~((1ULL << encode->bits) - 1);
-
-    encode->prefix_shift = ctz(prefix) & 0x3;
-    encode->prefix_bits =
-        ceil_div(64 - clz(encode->prefix) - encode->prefix_shift, 8) * 8;
-}
-
-static void
-calc_padding(struct trie_kvs_info *info)
-{
-    if (!((info->key.bits == 64) ^ (info->val.bits == 64))) return;
-    if (!((info->key.bits % 8) ^ (info->val.bits % 8))) return;
-
-    if (info->key.bits == 64)
-        info->val.pad = 8 - (info->val.bits % 8);
-    else info->key.pad = 8 - (info->key.bits % 8);
+    calc_value(encode->prefix, &encode->prefix_bits, &encode->prefix_shift);
 }
 
 static void
@@ -226,6 +223,17 @@ calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
 }
 
 static void
+calc_padding(struct trie_kvs_info *info)
+{
+    if (!((info->key.bits == 64) ^ (info->val.bits == 64))) return;
+    if (!((info->key.bits % 8) ^ (info->val.bits % 8))) return;
+
+    if (info->key.bits == 64)
+        info->val.pad = 8 - (info->val.bits % 8);
+    else info->key.pad = 8 - (info->key.bits % 8);
+}
+
+static void
 calc_buckets(struct trie_kvs_info *info)
 {
     size_t leftover = ILKA_CACHE_LINE - STATIC_HEADER_SIZE;
@@ -249,9 +257,10 @@ calc_buckets(struct trie_kvs_info *info)
         info->buckets--;
 }
 
-void
+int
 trie_kvs_info(
         struct trie_kvs_info *info, size_t key_len,
+        int has_value, uint64_t value,
         const struct trie_kv *kvs, size_t kvs_n)
 {
     if (!n) ilka_error("empty kvs");
@@ -261,6 +270,11 @@ trie_kvs_info(
     memset(info, 0, sizeof(struct trie_kvs_info));
     info->key_len = key_len;
     info->size = ILKA_CACHE_LINE;
+
+    if (has_value) {
+        info->value = value;
+        calc_value(info->value, &info->value_bits, &info->value_shift);
+    }
     calc_bits(info, kvs, kvs_n);
     calc_padding(info);
     calc_buckets(info);
@@ -287,12 +301,18 @@ decode_info(
 }
 
 static void
+decode_value(
+        struct bit_decoder *coder, uint64_t *value, uint8_t bits, uint8_t shift)
+{
+    if (!bits) return;
+    *value = bit_decode(bits) << shift;
+}
+
+static void
 decode_prefix(struct bit_decoder *coder, struct trie_kvs_encode_info *encode)
 {
-    if (!encode->prefix_bits) return;
-
-    encode->prefix = bit_decode(encode->prefix_bits);
-    encode->prefix <<= (encode->prefix_shift + encode->bits);
+    uint8_t shift = encode->prefix_shift + encode->bits;
+    decode_value(coder, &encoder->prefix, encode->prefix_bits, shift);
 }
 
 static void
@@ -362,6 +382,9 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
 
     info->buckets = bit_decode(&coder, 8);
 
+    info->value_offset = bit_decoder_offset(&coder);
+    decode_value(&coder, &info->value, info->value_bits, info->value_shift);
+
     decode_prefix(&coder, &info->key);
     decode_prefix(&coder, &info->val);
 
@@ -390,14 +413,18 @@ encode_info(
 }
 
 static void
+encode_value(
+        struct bit_encoder *coder, uint64_t value, uint8_t bits, uint8_t shift)
+{
+    if (!bits) return;
+    bit_encode(coder, value >> shift, bits);
+}
+
+static void
 encode_prefix(struct bit_encoder *coder, struct trie_kvs_encode_info *encode)
 {
-    if (!encode->prefix_bits) return;
-
-    size_t bits = encode->prefix_bits;
-    size_t shift = (encode->prefix_shift + encode->bits);
-
-    bit_encode(coder, encode->prefix >> shift, bits);
+    size_t shift = encode->prefix_shift + encode->bits;
+    encode_value(coder, encode->prefix, shift);
 }
 
 static void
@@ -416,7 +443,7 @@ encode_state(
 {
     struct bit_encoder coder;
     bit_encoder_init(&coder, data, info->size);
-    bit_encode_skip(coder, info->state_offset + bucket * 2);
+    bit_encoder_skip(coder, info->state_offset + bucket * 2);
 
     /* atomic release: make sure that any written buckets are visible before
      * updating the state. */
@@ -510,6 +537,9 @@ trie_kvs_encode(
 
     info->state_offset = bit_encoder_offset(&coder);
     encode_states(&code, info);
+
+    info->value_offset = bit_encoder_offset(&coder);
+    encode_value(&coder, info->value, info->value_bits, info->value_shift);
 
     encode_prefix(&coder, &info->key);
     encode_prefix(&coder, &info->val);
@@ -763,6 +793,35 @@ trie_kvs_set_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
     size_t bucket = find_bucket(info, 0, data);
     encode_bucket_value(info, bucket, kv.val, data);
     encode_state(info, bucket, kv.state, data);
+}
+
+
+// -----------------------------------------------------------------------------
+// set value
+// -----------------------------------------------------------------------------
+
+int
+trie_kvs_can_set_value_inplace(struct trie_kvs_info *info, uint64_t value)
+{
+    if (!info->value_bits) return 0;
+    if (value & ((1 << info->value_shift) - 1)) return 0;
+
+    uint8_t bits = 64 - clz(value >> info->value_shift);
+    return bits <= info->value_bits;
+}
+
+void
+trie_kvs_set_value_inplace(struct trie_kvs_info *info, uint64_t value)
+{
+    struct bit_encoder coder;
+    bit_encoder_init(&coder, data, info->size);
+    bit_encoder_skip(coder, info->value_offset);
+
+    value >>= info->value_shift;
+
+    /* atomic release: make sure that the new value is visible as soon as we
+     * write it. */
+    bit_encoder_atomic(coder, value, info->value_bits, memory_order_release);
 }
 
 
