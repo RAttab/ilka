@@ -42,6 +42,7 @@ struct trie_kvs_encode_info
 struct trie_kvs_info
 {
     uint8_t key_len;
+    uint8_t size;
     uint8_t buckets;
     uint8_t is_abs_buckets;
 
@@ -59,37 +60,35 @@ int trie_kvs_info(
         struct trie_kvs_info *info, size_t key_len,
         const struct trie_kv *kvs, size_t kvs_n);
 
-void trie_kvs_decode(
-        struct trie_kvs_info *info,
-        const void *data, size_t data_n);
+void trie_kvs_decode(struct trie_kvs_info *info);
 
 void trie_kvs_encode(
         const struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t kvs_n,
-        void *data, size_t data_n);
+        void *data);
 
 void trie_kvs_extract(
         const struct trie_kvs_info *info,
         struct trie_kv *kvs, size_t kvs_n,
-        const void *data, size_t data_n);
+        const void *data);
 
-struct trie_kv trie_kvs_get(struct trie_kvs_info *info, uint64_t key, const void *data, size_t data_n);
-struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data, size_t data_n);
-struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data, size_t data_n);
+struct trie_kv trie_kvs_get(struct trie_kvs_info *info, uint64_t key, const void *data);
+struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data);
+struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data);
 
-void trie_kvs_lock(void* data, size_t data_n);
-void trie_kvs_unlock(void* data, size_t data_n);
-void trie_kvs_clear_lock(void* data, size_t data_n);
+void trie_kvs_lock(void* data);
+void trie_kvs_unlock(void* data);
+void trie_kvs_clear_lock(void* data);
 
 void trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
 int trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv);
-void trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n);
+void trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data);
 
 void trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
 int trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv);
-void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data, size_t data_n);
+void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data);
 
-void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data, size_t data_n);
+void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data);
 
 
 // -----------------------------------------------------------------------------

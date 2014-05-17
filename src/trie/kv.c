@@ -260,6 +260,7 @@ trie_kvs_info(
 
     memset(info, 0, sizeof(struct trie_kvs_info));
     info->key_len = key_len;
+    info->size = ILKA_CACHE_LINE;
     calc_bits(info, kvs, kvs_n);
     calc_padding(info);
     calc_buckets(info);
@@ -309,11 +310,10 @@ decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
 
 static struct trie_kv
 decode_bucket(
-        struct trie_kvs_info *info, size_t bucket,
-        const void *data, size_t data_n)
+        struct trie_kvs_info *info, size_t bucket, const void *data)
 {
     struct bit_decoder coder;
-    bit_decoder_init(&coder, data, data_n);
+    bit_decoder_init(&coder, data, info->size);
 
     size_t bucket_bits = calc_bucket_size(info);
     bit_decode_skip(&coder, info->bucket_offset + bucket_bits * bucket);
@@ -343,12 +343,13 @@ decode_bucket(
 }
 
 void
-trie_kvs_decode(struct trie_kvs_info *info, const void *data, size_t data_n)
+trie_kvs_decode(struct trie_kvs_info *info, const void *data)
 {
-    struct bit_decoder coder;
-    bit_decoder_init(&coder, data, data_n);
-
     memset(info, 0, sizeof(struct trie_kvs_info));
+    info->size = ILKA_CACHE_LINE;
+
+    struct bit_decoder coder;
+    bit_decoder_init(&coder, data, info->size);
 
     bit_decode_skip(&coder, 1); // lock.
     info->is_abs_buckets = bit.decode(&coder, 3);
@@ -411,10 +412,10 @@ static void
 encode_state(
         struct trie_kvs_info *info,
         size_t bucket, enum trie_kvs_state state,
-        void *data, size_t data_n)
+        void *data)
 {
     struct bit_encoder coder;
-    bit_encoder_init(&coder, data, data_n);
+    bit_encoder_init(&coder, data, info->size);
     bit_encode_skip(coder, info->state_offset + bucket * 2);
 
     /* atomic release: make sure that any written buckets are visible before
@@ -437,10 +438,10 @@ static void
 encode_bucket(
         struct trie_kvs_info *info,
         size_t bucket, struct trie_kv kv,
-        void *data, size_t data_n)
+        void *data)
 {
     struct bit_encoder coder;
-    bit_encoder_init(&coder, data, data_n);
+    bit_encoder_init(&coder, data, info->size);
 
     size_t bucket_bits = calc_bucket_size(info);
     bit_encode_skip(&coder, info->bucket_offset + bucket_bits * bucket);
@@ -461,10 +462,10 @@ static void
 encode_bucket_value(
         struct trie_kvs_info *info,
         size_t bucket, uint64_t value,
-        void *data, size_t data_n)
+        void *data)
 {
     struct bit_encoder coder;
-    bit_encoder_init(&coder, data, data_n);
+    bit_encoder_init(&coder, data, info->size);
 
     size_t bucket_bits = calc_bucket_size(info);
     bit_encode_skip(&coder, info->bucket_offset + bucket_bits * bucket);
@@ -484,12 +485,12 @@ void
 trie_kvs_encode(
         const struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t kvs_n,
-        void *data, size_t data_n)
+        void *data)
 {
     struct bit_encoder coder;
-    bit_encoder_init(&coder, data, data_n);
+    bit_encoder_init(&coder, data, info->size);
 
-    memset(data, 0, data_n);
+    memset(data, 0, info->size);
 
     bit_encode_skip(&coder, 1); // lock.
 
@@ -517,7 +518,7 @@ trie_kvs_encode(
 
     for (size_t i = 0; i < kvs_n; ++i) {
         size_t bucket = !info->is_abs_buckets ? i : key_to_bucket(info, kvs[i].key);
-        encode_bucket(info, bucket, kvs[i], data, data_n);
+        encode_bucket(info, bucket, kvs[i], data);
     }
 }
 
@@ -527,9 +528,7 @@ trie_kvs_encode(
 // -----------------------------------------------------------------------------
 
 static size_t
-find_bucket(
-        struct trie_kvs_info *info, uint64_t key,
-        const void *data, size_t data_n)
+find_bucket(struct trie_kvs_info *info, uint64_t key, const void *data)
 {
     if (info->is_abs_buckets) return key_to_bucket(info, key);
 
@@ -537,15 +536,13 @@ find_bucket(
          bucket < info->buckets;
          bucket = next_bucket(info, 0))
     {
-        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key == key) return bucket;
     }
 }
 
 struct trie_kv
-trie_kvs_get(
-        struct trie_kvs_info *info, uint64_t key,
-        const void *data, size_t data_n)
+trie_kvs_get(struct trie_kvs_info *info, uint64_t key, const void *data)
 {
     if (info->is_abs_buckets) return key_to_bucket(info, key);
 
@@ -553,7 +550,7 @@ trie_kvs_get(
          bucket < info->buckets;
          bucket = next_bucket(info, 0))
     {
-        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key == key) return kv;
     }
 
@@ -561,9 +558,7 @@ trie_kvs_get(
 }
 
 struct trie_kv
-trie_kvs_lb(
-        struct trie_kvs_info *info, uint64_t key,
-        const void *data, size_t data_n)
+trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data)
 {
     /* \todo add a is_abs_bucket shortcut by implementing a prev_bucket util */
 
@@ -573,7 +568,7 @@ trie_kvs_lb(
          bucket < info->buckets;
          bucket = next_bucket(info, 0))
     {
-        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key > key) continue;
         if (kv.key < match.key) continue;
 
@@ -585,23 +580,21 @@ trie_kvs_lb(
 }
 
 struct trie_kv
-trie_kvs_ub(
-        struct trie_kvs_info *info, uint64_t key,
-        const void *data, size_t data_n)
+trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data)
 {
     struct trie_kv match = { .key = 0, .state = trie_kvs_state_empty };
 
     if (info->is_abs_buckets) {
         size_t bucket = next_bucket(info, key_to_bucket(info, key));
         if (bucket >= 64) return match;
-        return decode_bucket(info, bucket, data, data_n);
+        return decode_bucket(info, bucket, data);
     }
 
     for (size_t bucket = next_bucket(info, 0);
          bucket < info->buckets;
          bucket = next_bucket(info, 0))
     {
-        struct trie_kv kv = decode_bucket(info, bucket, data, data_n);
+        struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key > key) continue;
         if (kv.key < match.key) continue;
 
@@ -621,7 +614,7 @@ size_t
 trie_kvs_extract(
         const struct trie_kvs_info *info,
         struct trie_kv *kvs, size_t kvs_n,
-        const void *data, size_t data_n)
+        const void *data)
 {
     if (kvs_n < info->buckets) {
         ilka_error("kvs array of size <%zu> requires at least <%zu> buckets",
@@ -633,7 +626,7 @@ trie_kvs_extract(
          bucket < info->buckets;
          bucket = next_bucket(info, bucket + 1))
     {
-        kvs[i++] = decode_bucket(info, bucket, data, data_n);
+        kvs[i++] = decode_bucket(info, bucket, data);
     }
 
     return i;
@@ -730,17 +723,14 @@ trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
 }
 
 void
-trie_kvs_add_inplace(
-        struct trie_kvs_info *info,
-        struct trie_kv kv,
-        void *data, size_t data_n)
+trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
 {
     size_t bucket = info->is_abs_buckets ?
         key_to_bucket(info, kv[i].key) :
         next_empty_bucket(info);
 
-    encode_bucket(info, bucket, kv, data, data_n);
-    encode_state(info, bucket, kv.state, data, data_n);
+    encode_bucket(info, bucket, kv, data);
+    encode_state(info, bucket, kv.state, data);
 }
 
 
@@ -768,13 +758,11 @@ trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv)
 }
 
 void
-trie_kvs_set_inplace(
-        struct trie_kvs_info *info, struct trie_kv kv,
-        void *data, size_t data_n)
+trie_kvs_set_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
 {
-    size_t bucket = find_bucket(info, 0, data, data_n);
-    encode_bucket_value(info, bucket, kv.val, data, data_n);
-    encode_state(info, bucket, kv.state, data, data_n);
+    size_t bucket = find_bucket(info, 0, data);
+    encode_bucket_value(info, bucket, kv.val, data);
+    encode_state(info, bucket, kv.state, data);
 }
 
 
@@ -783,17 +771,15 @@ trie_kvs_set_inplace(
 // -----------------------------------------------------------------------------
 
 void
-trie_kvs_remove(
-        struct trie_kvs_info *info, uint64_t key,
-        void *data, size_t data_n)
+trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data)
 {
-    size_t bucket = find_bucket(info, key, data, data_n);
+    size_t bucket = find_bucket(info, key, data);
     ilka_assert(bucket < info->buckets, "removing empty bucket");
 
     enum trie_kvs_state state = info->is_abs_buckets ?
         trie_kvs_state_empty : trie_kvs_state_tombstone;
 
-    encode_state(info, bucket, state, data, data_n);
+    encode_state(info, bucket, state, data);
 }
 
 
