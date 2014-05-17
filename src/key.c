@@ -155,7 +155,7 @@ uint64_t ilka_key_peek(struct ilka_key_it it, size_t bits)
         data |= chunk->words[word] << n;
     }
 
-    data &= (1 << bits) - 1;
+    return data & ((1 << bits) - 1);
 }
 
 
