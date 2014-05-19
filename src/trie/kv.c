@@ -553,6 +553,21 @@ trie_kvs_encode(
 // read kvs
 // -----------------------------------------------------------------------------
 
+/* Counts the number of branch or value buckets within the s bitfield. */
+static count_buckets(uint64_t s)
+{
+    const uint64_t mask = 0x5555555555555555ULL;
+    return pop(((s >> 1) ^ s) & mask);
+}
+
+size_t
+trie_kvs_count(struct trie_kvs_info *info)
+{
+    return !!info->value_bits
+        + count_buckets(info->state[0])
+        + count_buckets(info->state[1]);
+}
+
 static size_t
 find_bucket(struct trie_kvs_info *info, uint64_t key, const void *data)
 {

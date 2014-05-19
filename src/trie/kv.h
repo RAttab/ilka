@@ -79,6 +79,8 @@ void trie_kvs_extract(
         struct trie_kv *kvs, size_t kvs_n,
         const void *data);
 
+size_t trie_kvs_count(struct trie_kvs_info *info);
+
 struct trie_kv trie_kvs_get(struct trie_kvs_info *info, uint64_t key, const void *data);
 struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data);
 struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data);
