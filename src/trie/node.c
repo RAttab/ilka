@@ -188,15 +188,17 @@ trie_node_next(
         key++;
     }
 
+    else {
+        uint64_t key_ub;
+        key_bounds(&key_it, info->key_len, &key, &key_ub);
+    }
+
 
     /* Search for the first element down a branch or return 0 if there's none.
      * Note that info->value should not be checked if we just finished consuming
      * the key. */
 
     while (true) {
-        uint64_t key_ub;
-        key_bounds(&key_it, info->key_len, &key, &key_ub);
-
         struct trie_kv kv = trie_kvs_ub(&info, key, p_node);
         if (kv.state == trie_kvs_state_empty) return 0;
 
@@ -216,6 +218,9 @@ trie_node_next(
                 *value = info->value;
                 return 1;
             }
+
+            uint64_t key_ub;
+            key_bounds(&key_it, info->key_len, &key, &key_ub);
 
             continue;
         }
@@ -258,15 +263,17 @@ trie_node_prev(
         key--;
     }
 
+    else {
+        uint64_t key_ub;
+        key_bounds(&key_it, info->key_len, &key, &key_ub);
+    }
+
 
     /* Search for the first element down a branch or return 0 if there's none.
      * Note that info->value should not be checked if we just finished consuming
      * the key. */
 
     while (true) {
-        uint64_t key_lb;
-        key_bounds(&key_it, info->key_len, &key_lb, &key);
-
         struct trie_kv kv = trie_kvs_lb(&info, key, p_node);
         if (kv.state == trie_kvs_state_empty) return 0;
 
@@ -286,6 +293,9 @@ trie_node_prev(
                 *value = info->value;
                 return 1;
             }
+
+            uint64_t key_lb;
+            key_bounds(&key_it, info->key_len, &key_lb, &key);
 
             continue;
         }
