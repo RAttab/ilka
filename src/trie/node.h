@@ -18,11 +18,19 @@ int trie_node_get(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key, uint64_t *value);
 
-void trie_node_lb(
+int trie_node_lb(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key, struct ilka_key_it lb);
 
-void trie_node_ub(
+int trie_node_ub(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, struct ilka_key_it ub);
+
+int trie_node_prefix_lb(
+        struct ilka_region *r, ilka_ptr_t node,
+        struct ilka_key_it key, struct ilka_key_it lb);
+
+int trie_node_prefix_ub(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key, struct ilka_key_it ub);
 
