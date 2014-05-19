@@ -50,11 +50,11 @@ void ilka_key_copy(restrict struct ilka_key *key, restrict struct ilka_key *othe
 
 int ilka_key_end(struct ilka_key_it it);
 struct ilka_key_it ilka_key_begin(struct ilka_key *key);
+size_t ilka_key_leftover(struct ilka_key_it it);
 
 uint64_t ilka_key_pop(struct ilka_key_it *it, size_t bits);
 uint64_t ilka_key_peek(struct ilka_key_it it, size_t bits);
 void ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits);
-int ilka_key_consume(struct ilka_key_it *it, uint64_t data, size_t bits);
 
 void ilka_key_append_16(struct ilka_key *key, uint16_t data);
 void ilka_key_append_32(struct ilka_key *key, uint32_t data);

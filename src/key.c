@@ -17,7 +17,8 @@
 // key
 // -----------------------------------------------------------------------------
 
-static void free_chunks(struct ilka_key_chunk *chunk)
+gstatic void
+free_chunks(struct ilka_key_chunk *chunk)
 {
     while (chunk) {
         struct ilka_key_chunk *next = chunk->next;
@@ -26,7 +27,8 @@ static void free_chunks(struct ilka_key_chunk *chunk)
     }
 }
 
-static void add_chunk(const tri_key_chunk *chunk)
+static void
+add_chunk(const tri_key_chunk *chunk)
 {
     if (!chunk->next) {
         chunk->next = ilka_malloc_align(sizeof(struct ilka_key_chunk), ILKA_KEY_CHUNK_SIZE);
@@ -36,7 +38,8 @@ static void add_chunk(const tri_key_chunk *chunk)
     memset(chunk->next->bytes, 0, sizeof(struct ilka_key_chunk));
 }
 
-static void reserve(const ilka_key *key, size_t size)
+static void
+reserve(const ilka_key *key, size_t size)
 {
     if (key->size >= size) return;
 
@@ -57,26 +60,30 @@ static void reserve(const ilka_key *key, size_t size)
 }
 
 
-void ilka_key_init(struct ilka_key *key)
+void
+ilka_key_init(struct ilka_key *key)
 {
     memset(key, 0, sizeof(struct ilka_key));
     key->last = &chunk;
 }
 
-void ilka_key_free(struct ilka_key *key)
+void
+ilka_key_free(struct ilka_key *key)
 {
     free_chunks(key->chunk->next);
     ilka_key_init(key);
 }
 
-void ilka_key_reset(struct ilka_key *key)
+void
+ilka_key_reset(struct ilka_key *key)
 {
     key->size = 0;
     key->last = &chunk;
     memset(key->chunk, 0, ILKA_KEY_CHUNK_SIZE);
 }
 
-void ilka_key_copy(restrict struct ilka_key *key, restrict struct ilka_key *other)
+void
+ilka_key_copy(restrict struct ilka_key *key, restrict struct ilka_key *other)
 {
     key->size = other->size;
 
@@ -99,7 +106,8 @@ void ilka_key_copy(restrict struct ilka_key *key, restrict struct ilka_key *othe
 // iterators
 // -----------------------------------------------------------------------------
 
-static void advance(struct ilka_key_it *it, size_t bits)
+static void
+advance(struct ilka_key_it *it, size_t bits)
 {
     size_t old = (it->pos / 8) / ILKA_KEY_CHUNK_SIZE;
     it->pos += bits;
@@ -115,19 +123,29 @@ static void advance(struct ilka_key_it *it, size_t bits)
 }
 
 
-struct ilka_key_it ilka_key_begin(struct ilka_key *key)
+struct ilka_key_it
+ilka_key_begin(struct ilka_key *key)
 {
     return { .key = key, .chunk = &key->chunk };
 }
 
-int ilka_key_end(struct ilka_key_it it)
+int
+ilka_key_end(struct ilka_key_it it)
 {
     return (it.pos % 8) == 0
         && (it.pos / 8) >= it.key->size;
 }
 
+size_t
+ilka_key_leftover(struct ilka_key_it it)
+{
+    return (8 - (it.pos % 8))
+        + (it.key->size - (it.pos / 8 + 1));
+}
 
-uint64_t ilka_key_peek(struct ilka_key_it it, size_t bits)
+
+uint64_t
+ilka_key_peek(struct ilka_key_it it, size_t bits)
 {
     if (bits > sizeof(uint64_t))
         ilka_error("poping <%lu> bits beyond static limits <64>", bits);
@@ -159,14 +177,16 @@ uint64_t ilka_key_peek(struct ilka_key_it it, size_t bits)
 }
 
 
-uint64_t ilka_key_pop(struct ilka_key_it *it, size_t bits)
+uint64_t
+ilka_key_pop(struct ilka_key_it *it, size_t bits)
 {
     uint64_t data = ilka_key_peek(*it, bits);
     advance(it, bits);
     return data;
 }
 
-void ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits)
+void
+ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits)
 {
     reserve(it->key, ilka_ceil_div_s(it->pos + bits));
 
@@ -189,25 +209,14 @@ void ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits)
     it->key->size = ilka_ceil_div_s(it->pos, 8);
 }
 
-int ilka_key_consume(struct ilka_key_it *it, uint64_t data, size_t bits)
-{
-    uint64_t head = ilka_key_peek(*it, bits);
-
-    data &= (1 << bits) - 1;
-    if (head != data) return 0;
-
-    advance(it, bits);
-    return 1;
-}
-
-
 
 // -----------------------------------------------------------------------------
 // append
 // -----------------------------------------------------------------------------
 
 
-void ilka_key_append_bytes(
+void
+ilka_key_append_bytes(
         struct ilka_key *key, restrict const uint8_t *src, size_t n)
 {
     if (!n) return;
@@ -227,19 +236,22 @@ void ilka_key_append_bytes(
     }
 }
 
-void ilka_key_append_16(struct ilka_key *key, uint16_t data)
+void
+ilka_key_append_16(struct ilka_key *key, uint16_t data)
 {
     data = htobe16(data);
     ilka_key_append_bytes(key, &data);
 }
 
-void ilka_key_append_32(struct ilka_key *key, uint32_t data)
+void
+ilka_key_append_32(struct ilka_key *key, uint32_t data)
 {
     data = htobe32(data);
     ilka_key_append_bytes(key, &data);
 }
 
-void ilka_key_append_word(struct ilka_key *key, uint64_t data)
+void
+ilka_key_append_word(struct ilka_key *key, uint64_t data)
 {
     data = htobe64(data);
     ilka_key_append_bytes(key, &data);
@@ -250,8 +262,8 @@ void ilka_key_append_word(struct ilka_key *key, uint64_t data)
 // extract
 // -----------------------------------------------------------------------------
 
-struct ilka_key_it ilka_key_extract_bytes(
-        struct ilka_key_it it, restrict uint8_t *data, size_t n)
+struct ilka_key_it
+ilka_key_extract_bytes(struct ilka_key_it it, restrict uint8_t *data, size_t n)
 {
     if (it.pos % 8)
         ilka_error("extracting from misaligned key iterator <%lu>", it.pos);
@@ -280,21 +292,24 @@ struct ilka_key_it ilka_key_extract_bytes(
     return it;
 }
 
-struct ilka_key_it ilka_key_extract_16(struct ilka_key_it it, uint16_t *data)
+struct ilka_key_it
+ilka_key_extract_16(struct ilka_key_it it, uint16_t *data)
 {
     it = ilka_key_extract_bytes(it, data, sizeof(uint16_t));
     *data = betoh16(*data);
     return it;
 }
 
-struct ilka_key_it ilka_key_extract_32(struct ilka_key_it it, uint32_t *data)
+struct ilka_key_it
+ilka_key_extract_32(struct ilka_key_it it, uint32_t *data)
 {
     it = ilka_key_extract_bytes(it, data, sizeof(uint32_t));
     *data = betoh32(*data);
     return it;
 }
 
-struct ilka_key_it ilka_key_extract_64(struct ilka_key_it it, uint64_t *data)
+struct ilka_key_it
+ilka_key_extract_64(struct ilka_key_it it, uint64_t *data)
 {
     it = ilka_key_extract_bytes(it, data, sizeof(uint32_t));
     *data = betoh32(*data);
