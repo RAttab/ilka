@@ -26,14 +26,6 @@ int trie_node_ub(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key, struct ilka_key_it ub);
 
-int trie_node_prefix_lb(
-        struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it lb);
-
-int trie_node_prefix_ub(
-        struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it ub);
-
 int trie_node_next(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key, struct ilka_key_it prev);

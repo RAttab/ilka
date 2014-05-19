@@ -16,7 +16,7 @@
 int
 trie_node_get(
         struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, uint64_t *value)
+        struct ilka_key_it key_it, uint64_t *value)
 {
     while (true) {
         void *p_node = ilka_region_read(r, node);
@@ -31,8 +31,8 @@ trie_node_get(
         }
         if (ilka_key_leftover(key) < info->key_len) return 0;
 
-        uint64_t key_bits = ilka_key_pop(&key, info->key_len);
-        struct trie_kv kv = trie_kvs_get(&info, key_bits, p_node);
+        uint64_t key = ilka_key_pop(&key_it, info->key_len);
+        struct trie_kv kv = trie_kvs_get(&info, key, p_node);
 
         if (kv.state == trie_kvs_state_branch) {
             node = kv.val;
@@ -52,53 +52,50 @@ trie_node_get(
 }
 
 
+
 // -----------------------------------------------------------------------------
 // lb-ub
 // -----------------------------------------------------------------------------
 
-static uint64_t
-prefix_key(struct ilka_key_it *key, size_t key_len, uint64_t padding)
+static void
+key_bounds(
+        struct ilka_key_it *key_it, size_t key_len,
+        restrict uint64_t *lb, restrict uint64_t *ub)
 {
     size_t leftover = ilka_key_leftover(key);
     size_t n = key_len > leftover ? leftover : key_len;
-
-    uint64_t key_bits = ilka_key_pop(key, n);
-
     size_t shift = key_len - n;
-    key_bits <<= shift;
-    key_bits |= padding & ((1ULL << shift) - 1);
 
-    return key_bits;
+    *lb = ilka_key_pop(key_it, n);
+    *lb <<= shift;
+    *ub = *lb | ((1ULL << shift) - 1);
 }
 
 int
 trie_node_lb(
         struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it lb)
+        struct ilka_key_it key_it, struct ilka_key_it lb)
 {
-    void *p_node = ilka_region.read(r, node);
-
-    struct trie_kvs_info info;
-    trie_kvs_decode(&info, p_node);
-
-    if (info->value_bits && ilka_key_end(key)) return 1;
-
-    uint64_t key_bits = prefix_key(&key, info->key_len, -1ULL);
-
     while (true) {
-        struct trie_kv kv = trie_kvs_lb(&info, key_bits, p_node);
+        void *p_node = ilka_region.read(r, node);
+
+        struct trie_kvs_info info;
+        trie_kvs_decode(&info, p_node);
+
+        if (info->value_bits && ilka_key_end(key)) return 1;
+
+        uint64_t key_lb, key_ub;
+        key_bounds(&key_it, info->key_len, &key_lb, &key_ub);
+        struct trie_kv kv = ilka_kvs_ub(&info, key_lb, p_node);
 
         if (kv.state == trie_kvs_state_empty) return 0;
+        if (kv.key > key_ub) return 0;
 
         ilka_key_push(&lb, kv.key, info->key_len);
 
         if (kv.state == trie_kvs_state_value) return 1;
-
-        if (kv.state != trie_kvs_state_branch) {
-            if (trie_node_lb(r, node, key, lb)) return 1;
-            if (kv.key < kv.key - 1) return 0;
-
-            key_bits = kv.key - 1;
+        if (kv.state == trie_kvs_state_branch) {
+            node = kv.val;
             continue;
         }
 
@@ -106,65 +103,35 @@ trie_node_lb(
     }
 }
 
-void
+int
 trie_node_ub(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key, struct ilka_key_it ub)
 {
-    void *p_node = ilka_region.read(r, node);
-
-    struct trie_kvs_info info;
-    trie_kvs_decode(&info, p_node);
-
-
-    uint64_t key_bits = prefix_key(&key, info->key_len, 0);
-
     while (true) {
-        struct trie_kv kv = trie_kvs_lb(&info, key_bits, p_node);
+        void *p_node = ilka_region.read(r, node);
+
+        struct trie_kvs_info info;
+        trie_kvs_decode(&info, p_node);
+
+        uint64_t key_lb, key_ub;
+        key_bounds(&key_it, info->key_len, &key_lb, &key_ub);
+        struct trie_kv kv = ilka_kvs_ub(&info, key_ub, p_node);
 
         if (kv.state == trie_kvs_state_empty)
             return info->value_bits && ilka_key_end(key);
+        if (kv.key > key_ub) return 0;
 
         ilka_key_push(&lb, kv.key, info->key_len);
 
         if (kv.state == trie_kvs_state_value) return 1;
-
-        if (kv.state != trie_kvs_state_branch) {
-            if (trie_node_lb(r, node, key, lb)) return 1;
-            if (kv.key < kv.key + 1) return 0;
-
-            key_bits = kv.key + 1;
+        if (kv.state == trie_kvs_state_branch) {
+            node = kv.val;
             continue;
         }
 
         ilka_error("expected <%d> got <%d>", trie_kvs_state_branch, kv.state);
     }
-}
-
-
-// -----------------------------------------------------------------------------
-// prefix lb-ub
-// -----------------------------------------------------------------------------
-
-int
-trie_node_prefix_lb(
-        struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it lb)
-{
-    void *p_node = ilka_region.read(r, node);
-
-    struct trie_kvs_info info;
-    trie_kvs_decode(&info, p_node);
-
-
-}
-
-int
-trie_node_prefix_ub(
-        struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it ub)
-{
-
 }
 
 int
