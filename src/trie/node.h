@@ -20,19 +20,19 @@ int trie_node_get(
 
 int trie_node_lb(
         struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it lb);
+        struct ilka_key_it key, struct ilka_key_it lb, uint64_t *value);
 
 int trie_node_ub(
         struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it ub);
+        struct ilka_key_it key, struct ilka_key_it ub, uint64_t *value);
 
 int trie_node_next(
         struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it prev);
+        struct ilka_key_it key, struct ilka_key_it next, uint64_t *value);
 
 int trie_node_prev(
         struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key, struct ilka_key_it next);
+        struct ilka_key_it key, struct ilka_key_it prev, uint64_t *value);
 
 int trie_node_add(
         struct ilka_region *r, ilka_ptr_t node,
