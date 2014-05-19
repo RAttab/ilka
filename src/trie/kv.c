@@ -9,8 +9,7 @@ Static layout:
 
    byte  bit  len  field                   f(x)
 
-      0    0    1  lock
-           1    3  flags                   is_abs_buckets
+      0    0    4  flags                   is_abs_buckets
            4    4  key.len                 x << 2
       1    0    4  key.bits                x << 2
            4    4  key.shift               x << 2
@@ -371,8 +370,7 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
     struct bit_decoder coder;
     bit_decoder_init(&coder, data, info->size);
 
-    bit_decode_skip(&coder, 1); // lock.
-    info->is_abs_buckets = bit.decode(&coder, 3);
+    info->is_abs_buckets = bit.decode(&coder, 4);
     info->key_len = bit_decode(&coder, 4) << 2;
 
     decode_info(&coder, &info->key, info->key_len);
@@ -519,9 +517,7 @@ trie_kvs_encode(
 
     memset(data, 0, info->size);
 
-    bit_encode_skip(&coder, 1); // lock.
-
-    bit_encode(&coder, info->is_abs_buckets, 3);
+    bit_encode(&coder, info->is_abs_buckets, 4);
     bit_encode(&coder, info->key_len >> 2, 4);
 
     encode_info(&coder, &info->key, info->key_len);
@@ -660,47 +656,6 @@ trie_kvs_extract(
     }
 
     return i;
-}
-
-
-// -----------------------------------------------------------------------------
-// lock
-// -----------------------------------------------------------------------------
-
-static const uint8_t lock_mask = 0x1;
-
-void
-trie_kvs_lock(void* data, size_t)
-{
-    uint8_t *lock = data;
-
-    uint8_t new;
-    uint8_t old = ilka_atomic_load(*lock, memory_order_relaxed);
-
-    const enum memory_order fail = memory_order_relaxed;
-    const enum memory_order success = memory_order_acquire;
-
-    do {
-        if (old & lock_mask) {
-            old = ilka_atomic_load(*lock, memory_order_relaxed);
-            continue;
-        }
-
-        new = old | lock_mask;
-    } while(!ilka_atomic_cmp_xchg(lock, &old, new, success, fail));
-}
-
-void trie_kvs_unlock(void* data, size_t)
-{
-    uint8_t *lock = data;
-    uint8_t old = ilka_atomic_load(lock, memory_order_relaxed);
-    ilka_atomic_store(lock, order & ~lock_mask, memory_order_release);
-}
-
-void trie_kvs_clear_lock(void* data, size_)
-{
-    uint8_t *lock = data;
-    *lock &= ~lock_mask;
 }
 
 

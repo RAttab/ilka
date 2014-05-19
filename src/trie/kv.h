@@ -83,10 +83,6 @@ struct trie_kv trie_kvs_get(struct trie_kvs_info *info, uint64_t key, const void
 struct trie_kv trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data);
 struct trie_kv trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data);
 
-void trie_kvs_lock(void* data);
-void trie_kvs_unlock(void* data);
-void trie_kvs_clear_lock(void* data);
-
 void trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
 int trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv);
 void trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data);
