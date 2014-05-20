@@ -33,6 +33,10 @@ inline size_t ceil_div(size_t n, size_t d)
     return n ? ((n - 1) / d) + 1 : 0;
 }
 
+inline uint64_t leading_bit(uint64_t x)
+{
+    return x & (1ULL << (64 - clz(x)));
+}
 
 // -----------------------------------------------------------------------------
 // bitfields
