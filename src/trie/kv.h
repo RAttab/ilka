@@ -103,26 +103,22 @@ void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data);
 // kvs burst
 // -----------------------------------------------------------------------------
 
-enum
-{
-    TRIE_KVS_MAX_BUCKETS = 64,
-    TRIE_KVS_MAX_BURST_KV = TRIE_KVS_MAX_BUCKETS / 2;
-};
+enum { TRIE_KVS_MAX_BUCKETS = 256 };
 
 struct trie_kvs_burst_suffix
 {
     uint8_t size;
-    struct trie_kv kvs[TRIE_KVS_MAX_BURST_KV];
+    struct trie_kv kvs[TRIE_KVS_MAX_BUCKETS];
 };
 
 struct trie_kvs_burst_info
 {
     uint8_t prefix_bits;
     uint8_t prefixes;
-    struct trie_kv prefix[TRIE_KVS_MAX_BURST_KV];
+    struct trie_kv prefix[TRIE_KVS_MAX_BUCKETS];
 
     uint8_t suffix_bits;
-    struct trie_kvs_burst_suffix suffix[TRIE_KVS_MAX_BURST_KV];
+    struct trie_kvs_burst_suffix suffix[TRIE_KVS_MAX_BUCKETS];
 };
 
 void trie_kvs_burst(
