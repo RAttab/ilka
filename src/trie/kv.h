@@ -67,7 +67,7 @@ int trie_kvs_info(
         int has_value, uint64_t value,
         const struct trie_kv *kvs, size_t kvs_n);
 
-void trie_kvs_decode(struct trie_kvs_info *info);
+void trie_kvs_decode(struct trie_kvs_info *info, const void *data);
 
 void trie_kvs_encode(
         const struct trie_kvs_info *info,

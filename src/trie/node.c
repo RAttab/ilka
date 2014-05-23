@@ -328,7 +328,10 @@ write_node(
 }
 
 static ilka_ptr_t
-new_node(struct ilka_region *r, struct ilka_key_it key_it, uint64_t value)
+new_node(
+        struct ilka_region *r,
+        int has_value, uint64_t node_value,
+        struct ilka_key_it key_it, uint64_t value)
 {
     struct trie_kv kv;
     size_t bits = ilka_key_leftover(key_it);
@@ -343,15 +346,62 @@ new_node(struct ilka_region *r, struct ilka_key_it key_it, uint64_t value)
         if (bits > 64) bits = 64;
 
         kv.key = ilka_key_pop(key_it, bits);
-        kv.val = new_node(r, key_it, value);
+        kv.val = new_node(r, 0, 0, key_it, value);
         kv.state = trie_kvs_state_branch;
     }
 
-    return write_node(r, bits, &kv, 1);
+    return write_node(r, bits, has_value, node_value, &kv, 1);
+}
+
+
+static int
+add_burst_suffix(
+        struct ilka_region *r,
+        struct trie_kvs_burst_info *burst,
+        struct ilka_key_it *key_it, uint64_t value,
+        int add_to_suffix, int is_value_of_prefix)
+{
+    size_t leftover = ilka_key_leftover(*key_it);
+    int is_suffix_burst = burst->suffix_bits != leftover - burst->prefix_bits;
+
+    uint64_t prefix;
+    if (add_to_suffix || is_value_of_prefix)
+        prefix = ilka_key_pop(key_it, burst->prefix_bits);
+
+    int kv_added = 0;
+
+    for (size_t i = 0; i < burst->prefixes; ++i) {
+        int is_search_prefix = prefix == burst->prefix[i].key;
+        kv_added |= is_search_prefix;
+
+        if (add_to_suffix && is_suffix_burst && is_search_prefix) {
+            burst->prefix[i].val = add_burst(
+                    r, burst->suffix.bits, 0, 0,
+                    burst->suffix[i].kvs, burst->suffix[i].size,
+                    *key_it, value);
+            continue;
+        }
+
+        if (!is_value_of_prefix && is_search_prefix) {
+            struct trie_kv kv = {
+                .key = ilka_key_pop(key_it, leftover - burst->prefix_bits),
+                .val = value,
+                .state = trie_kvs_state_value
+            };
+            trie_kvs_add(burst->suffix[i].kvs, burst->suffix[i].size, kv);
+        }
+
+        int has_value = is_search_prefix && is_value_of_prefix;
+        burst->prefix[i].val = write_node(
+                r, burst->suffix.bits, has_value, value,
+                burst->suffix[i].kvs, burst->suffix[i].size);
+    }
+
+    return kv_added;
 }
 
 static ilka_ptr_t
-burst_add(
+add_burst(
         struct ilka_region *r, size_t key_len,
         int has_value, uint64_t node_value,
         struct trie_kv *kvs, size_t kvs_n,
@@ -366,40 +416,9 @@ burst_add(
 
     int add_to_suffix = leftover > burst.prefix_bits;
     int is_value_of_prefix = leftover == burst.prefix_bits;
-    int is_suffix_burst = burst.suffix_bits != leftover - burst.prefix_bits;
 
-    uint64_t prefix;
-    if (add_to_suffix || is_value_of_prefix)
-        prefix = ilka_key_pop(burst.prefix_bits);
-
-    int kv_added = 0;
-
-    for (size_t i = 0; i < burst.prefixes; ++i) {
-        int is_search_prefix = prefix == burst.prefix[i].key;
-        kv_added |= is_search_prefix;
-
-        if (add_to_suffix && is_suffix_burst && is_search_prefix) {
-            burst.prefix[i].val = burst_add(
-                    r, burst.suffix.bits, 0, 0,
-                    burst.suffix[i].kvs, burst.suffix[i].size,
-                    key_it, value);
-            continue;
-        }
-
-        if (!is_value_of_prefix && is_search_prefix) {
-            struct trie_kv kv = {
-                .key = ilka_key_pop(key_it, leftover - burst.prefix_bits),
-                .val = value,
-                .state = trie_kvs_state_value
-            };
-            trie_kvs_add(burst.suffix[i].kvs, burst.suffix[i].size, kv);
-        }
-
-        int has_value = is_search_prefix && is_value_of_prefix;
-        burst.prefix[i].val = write_node(
-                r, burst.suffix.bits, has_value, value,
-                burst.suffix[i].kvs, burst.suffix[i].size);
-    }
+    int kv_added = add_burst_suffix(
+            r, &burst, key_it, value, add_to_suffix, is_value_of_prefix);
 
     if (!kv_added && (add_to_suffix || is_value_of_prefix)) {
         struct trie_kv kv { .key = prefix };
@@ -408,7 +427,7 @@ burst_add(
             kv.state = trie_kvs_state_value;
         }
         else {
-            kv.val = new_node(r, key_it, value);
+            kv.val = new_node(r, 0, 0, key_it, value);
             kv.state = trie_kvs_state_branch;
         }
         trie_kvs_add(burst.prefix, burst.prefixes, kv);
@@ -427,17 +446,118 @@ burst_add(
             burst.prefix, burst.prefixes);
 }
 
+static ilka_ptr_t
+add_to_node(
+        struct ilka_region *r,
+        struct trie_kvs_info *info,
+        struct ilka_key_it key_it, uint64_t value)
+{
+    void *p_node = ilka_region_read(r, node);
+
+    struct trie_kvs_info info;
+    trie_kvs_decode(&info, p_node);
+
+    size_t leftover = ilka_key_leftover(key_it);
+
+    if (leftover == info->key_len) {
+        struct trie_kvs kv = {
+            .key = ilka_key_peek(key_it, info.key_len),
+            .val = value,
+            .state = trie_kvs_state_value
+        };
+
+        if (trie_kvs_can_add_inplace(&info, kv)) {
+            trie_kvs_add_inplace(&info, kv, p_node);
+            return node;
+        }
+    }
+
+    const size_t kvs_n = info.buckets;
+    struct trie_kv kvs[kvs_n];
+    trie_kvs_extract(info, kvs, kvs_n, node);
+
+    return add_burst(
+            r, info->key_len, info->value_bits, info->value,
+            kvs, kvs_n, key_it, value);
+}
+
+static ilka_ptr_t
+add_to_child(
+        struct ilka_region *r,
+        struct trie_kvs_info *info,
+        struct ilka_key_it key_it, uint64_t value)
+{
+    void *p_node = ilka_region_read(r, node);
+
+    struct trie_kvs_info info;
+    trie_kvs_decode(&info, p_node);
+
+    struct trie_kv child = {
+        .key = ilka_key_pop(&key_it, info.key_len),
+        .state = trie_kvs_state_empty
+    };
+    child = trie_kvs_get(&info, child.key, p_node);
+
+
+    int has_value = 0;
+    uintptr_t new_child = 0;
+
+    switch (child.state)
+    {
+    case trie_kvs_state_value: has_value = 1; // intentional fall-through.
+    case trie_kvs_state_empty:
+        new_child = new_node(r, has_value, child.value, key_it, value);
+        break;
+
+    case trie_kvs_state_branch:
+        new_child = trie_node_add(r, child.val, key_it, value);
+        break;
+
+    default:
+        ilka_error("unknown child state <%d>", child.state);
+
+    };
+
+    ilka_assert(new_child > 0, "null child ptr");
+
+
+    if (child.state == trie_kvs_state_branch && child.val == new_child)
+        return node;
+
+
+    child.val = new_child;
+    child.state = trie_kvs_state_branch;
+
+    if (trie_kvs_can_set_inplace(&info, child)) {
+        trie_kvs_set_inplace(&info, child, p_node);
+        return node;
+    }
+
+    struct trie_kv kvs[info.buckets];
+    trie_kvs_extract(&info, kvs, info.buckets, p_node);
+    trie_kvs_set(kvs, info.buckets, child);
+
+    return write_node(
+            r, info.key_len, info.has_value, info.value, kvs, info.buckets);
+}
+
 int
 trie_node_add(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key_it, uint64_t value)
 {
-    if (!node) return new_node(r, key_it, value);
+    if (!node) return new_node(r, 0, 0, key_it, value);
 
-    void *p_node = ilka_region_read(r, node);
+    if (ilka_key_leftover(key_it) <= info.key_len)
+        return add_to_node(r, node, key_it, value);
 
-    struct trie_kvs_info info;
+    return add_to_child(r, key_it, value);
 }
+
+
+// -----------------------------------------------------------------------------
+// set
+// -----------------------------------------------------------------------------
 
 int
 trie_node_cmp_xchg(
