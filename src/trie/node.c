@@ -18,20 +18,20 @@ trie_node_get(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key_it, uint64_t *value)
 {
-    while (true) {
+    while (1) {
         void *p_node = ilka_region_read(r, node);
 
         struct trie_kvs_info info;
         trie_kvs_decode(&info, p_node);
 
-        if (ilka_key_end(key)) {
+        if (ilka_key_end(key_it)) {
             if (!info.value_bits) return 0;
             *value = info.value;
             return 1;
         }
-        if (ilka_key_leftover(key) < info->key_len) return 0;
+        if (ilka_key_leftover(key_it) < info.key_len) return 0;
 
-        uint64_t key = ilka_key_pop(&key_it, info->key_len);
+        uint64_t key = ilka_key_pop(&key_it, info.key_len);
         struct trie_kv kv = trie_kvs_get(&info, key, p_node);
 
         if (kv.state == trie_kvs_state_branch) {
@@ -39,8 +39,8 @@ trie_node_get(
             continue;
         }
 
-        if (kv.state == trie_kvs_state_value) {
-            if (!ilka_key_end(key)) return 0;
+        if (kv.state == trie_kvs_state_terminal) {
+            if (!ilka_key_end(key_it)) return 0;
             *value = info.value;
             return 1;
         }
@@ -59,9 +59,9 @@ trie_node_get(
 static void
 key_bounds(
         struct ilka_key_it *key_it, size_t key_len,
-        restrict uint64_t *lb, restrict uint64_t *ub)
+        uint64_t * restrict lb, uint64_t * restrict ub)
 {
-    size_t leftover = ilka_key_leftover(key);
+    size_t leftover = ilka_key_leftover(*key_it);
     size_t n = key_len > leftover ? leftover : key_len;
     size_t shift = key_len - n;
 
@@ -75,27 +75,27 @@ trie_node_lb(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key_it, struct ilka_key_it lb, uint64_t *value)
 {
-    while (true) {
+    while (1) {
         void *p_node = ilka_region_read(r, node);
 
         struct trie_kvs_info info;
         trie_kvs_decode(&info, p_node);
 
-        if (info->value_bits && ilka_key_end(key)) {
-            *value = info->value;
+        if (info.value_bits && ilka_key_end(key_it)) {
+            *value = info.value;
             return 1;
         }
 
         uint64_t key_lb, key_ub;
-        key_bounds(&key_it, info->key_len, &key_lb, &key_ub);
-        struct trie_kv kv = ilka_kvs_ub(&info, key_lb, p_node);
+        key_bounds(&key_it, info.key_len, &key_lb, &key_ub);
+        struct trie_kv kv = trie_kvs_ub(&info, key_lb, p_node);
 
         if (kv.state == trie_kvs_state_empty) return 0;
         if (kv.key > key_ub) return 0;
 
-        ilka_key_push(&lb, kv.key, info->key_len);
+        ilka_key_push(&lb, kv.key, info.key_len);
 
-        if (kv.state == trie_kvs_state_value) {
+        if (kv.state == trie_kvs_state_terminal) {
             *value = kv.val;
             return 1;
         }
@@ -114,28 +114,28 @@ trie_node_ub(
         struct ilka_region *r, ilka_ptr_t node,
         struct ilka_key_it key_it, struct ilka_key_it ub, uint64_t *value)
 {
-    while (true) {
+    while (1) {
         void *p_node = ilka_region_read(r, node);
 
         struct trie_kvs_info info;
         trie_kvs_decode(&info, p_node);
 
         uint64_t key_lb, key_ub;
-        key_bounds(&key_it, info->key_len, &key_lb, &key_ub);
-        struct trie_kv kv = ilka_kvs_lb(&info, key_ub, p_node);
+        key_bounds(&key_it, info.key_len, &key_lb, &key_ub);
+        struct trie_kv kv = trie_kvs_lb(&info, key_ub, p_node);
 
         if (kv.state == trie_kvs_state_empty) {
-            if (info->value_bits && ilka_key_end(key)) {
-                *value = info->value;
+            if (info.value_bits && ilka_key_end(key_it)) {
+                *value = info.value;
                 return 1;
             }
             return 0;
         }
         if (kv.key > key_ub) return 0;
 
-        ilka_key_push(&lb, kv.key, info->key_len);
+        ilka_key_push(&ub, kv.key, info.key_len);
 
-        if (kv.state == trie_kvs_state_value) {
+        if (kv.state == trie_kvs_state_terminal) {
             *value = kv.val;
             return 1;
         }
@@ -170,17 +170,17 @@ trie_node_next(
     /* Consume as much of the key as possible but also backtrack if there's no
      * next down that branch. */
 
-    if (leftover >= info->key_len) {
-        key = ilka_key_pop(&key_it, info->key_len);
+    if (leftover >= info.key_len) {
+        key = ilka_key_pop(&key_it, info.key_len);
         struct trie_kv kv = trie_kvs_get(&info, key, p_node);
 
         if (kv.state == trie_kvs_state_branch) {
-            ilka_key_push(&next, key, info->key_len);
+            ilka_key_push(&next, key, info.key_len);
 
             if (trie_node_next(r, kv.val, key_it, next, value))
                 return 1;
 
-            (void) ilka_key_pop(&next, info->key_len);
+            (void) ilka_key_pop(&next, info.key_len);
         }
 
         /* our next isn't down this branch so start searching after our key. */
@@ -190,21 +190,21 @@ trie_node_next(
 
     else {
         uint64_t key_ub;
-        key_bounds(&key_it, info->key_len, &key, &key_ub);
+        key_bounds(&key_it, info.key_len, &key, &key_ub);
     }
 
 
     /* Search for the first element down a branch or return 0 if there's none.
-     * Note that info->value should not be checked if we just finished consuming
+     * Note that info.value should not be checked if we just finished consuming
      * the key. */
 
-    while (true) {
+    while (1) {
         struct trie_kv kv = trie_kvs_ub(&info, key, p_node);
         if (kv.state == trie_kvs_state_empty) return 0;
 
-        ilka_key_push(&next, kv.key, info->key_len);
+        ilka_key_push(&next, kv.key, info.key_len);
 
-        if (kv.state == trie_kvs_state_value) {
+        if (kv.state == trie_kvs_state_terminal) {
             *value = kv.val;
             return 1;
         }
@@ -214,13 +214,13 @@ trie_node_next(
             p_node = ilka_region_read(r, node);
             trie_kvs_decode(&info, p_node);
 
-            if (info->value_bits && ilka_key_end(key_it)) {
-                *value = info->value;
+            if (info.value_bits && ilka_key_end(key_it)) {
+                *value = info.value;
                 return 1;
             }
 
             uint64_t key_ub;
-            key_bounds(&key_it, info->key_len, &key, &key_ub);
+            key_bounds(&key_it, info.key_len, &key, &key_ub);
 
             continue;
         }
@@ -245,17 +245,17 @@ trie_node_prev(
     /* Consume as much of the key as possible but also backtrack if there's no
      * prev down that branch. */
 
-    if (leftover >= info->key_len) {
-        key = ilka_key_pop(&key_it, info->key_len);
+    if (leftover >= info.key_len) {
+        key = ilka_key_pop(&key_it, info.key_len);
         struct trie_kv kv = trie_kvs_get(&info, key, p_node);
 
         if (kv.state == trie_kvs_state_branch) {
-            ilka_key_push(&prev, key, info->key_len);
+            ilka_key_push(&prev, key, info.key_len);
 
             if (trie_node_prev(r, kv.val, key_it, prev, value))
                 return 1;
 
-            (void) ilka_key_pop(&prev, info->key_len);
+            (void) ilka_key_pop(&prev, info.key_len);
         }
 
         /* our prev isn't down this branch so start searching after our key. */
@@ -265,21 +265,21 @@ trie_node_prev(
 
     else {
         uint64_t key_ub;
-        key_bounds(&key_it, info->key_len, &key, &key_ub);
+        key_bounds(&key_it, info.key_len, &key, &key_ub);
     }
 
 
     /* Search for the first element down a branch or return 0 if there's none.
-     * Note that info->value should not be checked if we just finished consuming
+     * Note that info.value should not be checked if we just finished consuming
      * the key. */
 
-    while (true) {
+    while (1) {
         struct trie_kv kv = trie_kvs_lb(&info, key, p_node);
         if (kv.state == trie_kvs_state_empty) return 0;
 
-        ilka_key_push(&prev, kv.key, info->key_len);
+        ilka_key_push(&prev, kv.key, info.key_len);
 
-        if (kv.state == trie_kvs_state_value) {
+        if (kv.state == trie_kvs_state_terminal) {
             *value = kv.val;
             return 1;
         }
@@ -289,13 +289,13 @@ trie_node_prev(
             p_node = ilka_region_read(r, node);
             trie_kvs_decode(&info, p_node);
 
-            if (info->value_bits && ilka_key_end(key_it)) {
-                *value = info->value;
+            if (info.value_bits && ilka_key_end(key_it)) {
+                *value = info.value;
                 return 1;
             }
 
             uint64_t key_lb;
-            key_bounds(&key_it, info->key_len, &key_lb, &key);
+            key_bounds(&key_it, info.key_len, &key_lb, &key);
 
             continue;
         }
@@ -310,6 +310,14 @@ trie_node_prev(
 // -----------------------------------------------------------------------------
 
 static ilka_ptr_t
+add_burst(
+        struct ilka_region *r, size_t key_len,
+        int has_value, uint64_t node_value,
+        struct trie_kv *kvs, size_t kvs_n,
+        struct ilka_key_it key_it, uint64_t value);
+
+
+static ilka_ptr_t
 write_node(
         struct ilka_region *r, size_t key_len,
         int has_value, uint64_t value,
@@ -318,11 +326,11 @@ write_node(
     struct trie_kvs_info info;
     trie_kvs_info(&info, key_len, has_value, value, kvs, kvs_n);
 
-    ilka_ptr_t node = ilka_region_alloc(r, info->size);
+    ilka_ptr_t node = ilka_region_alloc(r, info.size, info.size);
     {
         void *p_node = ilka_region_pin_write(r, node);
-        trie_kvs-encode(&info, kvs, kvs_n, p_node);
-        ilka_region_unpin_write(r, p_note);
+        trie_kvs_encode(&info, kvs, kvs_n, p_node);
+        ilka_region_unpin_write(r, p_node);
     }
     return node;
 }
@@ -337,15 +345,15 @@ new_node(
     size_t bits = ilka_key_leftover(key_it);
 
     if (bits <= 64 && pop(bits) == 1) {
-        kv.key = ilka_key_pop(bits);
+        kv.key = ilka_key_pop(&key_it, bits);
         kv.val = value;
-        kv.state = trie_kvs_state_value;
+        kv.state = trie_kvs_state_terminal;
     }
     else {
         bits = leading_bit(bits);
         if (bits > 64) bits = 64;
 
-        kv.key = ilka_key_pop(key_it, bits);
+        kv.key = ilka_key_pop(&key_it, bits);
         kv.val = new_node(r, 0, 0, key_it, value);
         kv.state = trie_kvs_state_branch;
     }
@@ -359,14 +367,10 @@ add_burst_suffix(
         struct ilka_region *r,
         struct trie_kvs_burst_info *burst,
         struct ilka_key_it *key_it, uint64_t value,
-        int add_to_suffix, int is_value_of_prefix)
+        uint64_t prefix, int add_to_suffix, int is_value_of_prefix)
 {
     size_t leftover = ilka_key_leftover(*key_it);
     int is_suffix_burst = burst->suffix_bits != leftover - burst->prefix_bits;
-
-    uint64_t prefix;
-    if (add_to_suffix || is_value_of_prefix)
-        prefix = ilka_key_pop(key_it, burst->prefix_bits);
 
     int kv_added = 0;
 
@@ -376,7 +380,7 @@ add_burst_suffix(
 
         if (add_to_suffix && is_suffix_burst && is_search_prefix) {
             burst->prefix[i].val = add_burst(
-                    r, burst->suffix.bits, 0, 0,
+                    r, burst->suffix_bits, 0, 0,
                     burst->suffix[i].kvs, burst->suffix[i].size,
                     *key_it, value);
             continue;
@@ -386,14 +390,14 @@ add_burst_suffix(
             struct trie_kv kv = {
                 .key = ilka_key_pop(key_it, leftover - burst->prefix_bits),
                 .val = value,
-                .state = trie_kvs_state_value
+                .state = trie_kvs_state_terminal
             };
             trie_kvs_add(burst->suffix[i].kvs, burst->suffix[i].size, kv);
         }
 
         int has_value = is_search_prefix && is_value_of_prefix;
         burst->prefix[i].val = write_node(
-                r, burst->suffix.bits, has_value, value,
+                r, burst->suffix_bits, has_value, value,
                 burst->suffix[i].kvs, burst->suffix[i].size);
     }
 
@@ -417,14 +421,18 @@ add_burst(
     int add_to_suffix = leftover > burst.prefix_bits;
     int is_value_of_prefix = leftover == burst.prefix_bits;
 
+    uint64_t prefix;
+    if (add_to_suffix || is_value_of_prefix)
+        prefix = ilka_key_pop(&key_it, burst.prefix_bits);
+
     int kv_added = add_burst_suffix(
-            r, &burst, key_it, value, add_to_suffix, is_value_of_prefix);
+            r, &burst, &key_it, value, prefix, add_to_suffix, is_value_of_prefix);
 
     if (!kv_added && (add_to_suffix || is_value_of_prefix)) {
-        struct trie_kv kv { .key = prefix };
+        struct trie_kv kv = { .key = prefix };
         if (is_value_of_prefix) {
             kv.val = value;
-            kv.state = trie_kvs_state_value;
+            kv.state = trie_kvs_state_terminal;
         }
         else {
             kv.val = new_node(r, 0, 0, key_it, value);
@@ -436,7 +444,7 @@ add_burst(
 
     if (leftover < burst.prefix_bits) {
         ilka_assert(!kv_added, "kv added before bursting prefix");
-        return burst_add(
+        return add_burst(
                 r, burst.prefix_bits, has_value, node_value,
                 burst.prefix, burst.prefixes, key_it, value);
     }
@@ -449,32 +457,28 @@ add_burst(
 static ilka_ptr_t
 add_to_node(
         struct ilka_region *r,
+        ilka_ptr_t node, void *p_node,
         struct trie_kvs_info *info,
         struct ilka_key_it key_it, uint64_t value)
 {
-    void *p_node = ilka_region_read(r, node);
-
-    struct trie_kvs_info info;
-    trie_kvs_decode(&info, p_node);
-
     size_t leftover = ilka_key_leftover(key_it);
 
     if (leftover == info->key_len) {
-        struct trie_kvs kv = {
-            .key = ilka_key_peek(key_it, info.key_len),
+        struct trie_kv kv = {
+            .key = ilka_key_peek(key_it, info->key_len),
             .val = value,
-            .state = trie_kvs_state_value
+            .state = trie_kvs_state_terminal
         };
 
-        if (trie_kvs_can_add_inplace(&info, kv)) {
-            trie_kvs_add_inplace(&info, kv, p_node);
+        if (trie_kvs_can_add_inplace(info, kv)) {
+            trie_kvs_add_inplace(info, kv, p_node);
             return node;
         }
     }
 
-    const size_t kvs_n = info.buckets;
+    const size_t kvs_n = info->buckets;
     struct trie_kv kvs[kvs_n];
-    trie_kvs_extract(info, kvs, kvs_n, node);
+    trie_kvs_extract(info, kvs, kvs_n, p_node);
 
     return add_burst(
             r, info->key_len, info->value_bits, info->value,
@@ -484,19 +488,15 @@ add_to_node(
 static ilka_ptr_t
 add_to_child(
         struct ilka_region *r,
+        ilka_ptr_t node, void *p_node,
         struct trie_kvs_info *info,
         struct ilka_key_it key_it, uint64_t value)
 {
-    void *p_node = ilka_region_read(r, node);
-
-    struct trie_kvs_info info;
-    trie_kvs_decode(&info, p_node);
-
     struct trie_kv child = {
-        .key = ilka_key_pop(&key_it, info.key_len),
+        .key = ilka_key_pop(&key_it, info->key_len),
         .state = trie_kvs_state_empty
     };
-    child = trie_kvs_get(&info, child.key, p_node);
+    child = trie_kvs_get(info, child.key, p_node);
 
 
     int has_value = 0;
@@ -504,9 +504,9 @@ add_to_child(
 
     switch (child.state)
     {
-    case trie_kvs_state_value: has_value = 1; // intentional fall-through.
+    case trie_kvs_state_terminal: has_value = 1; // intentional fall-through.
     case trie_kvs_state_empty:
-        new_child = new_node(r, has_value, child.value, key_it, value);
+        new_child = new_node(r, has_value, child.val, key_it, value);
         break;
 
     case trie_kvs_state_branch:
@@ -528,17 +528,17 @@ add_to_child(
     child.val = new_child;
     child.state = trie_kvs_state_branch;
 
-    if (trie_kvs_can_set_inplace(&info, child)) {
-        trie_kvs_set_inplace(&info, child, p_node);
+    if (trie_kvs_can_set_inplace(info, child)) {
+        trie_kvs_set_inplace(info, child, p_node);
         return node;
     }
 
-    struct trie_kv kvs[info.buckets];
-    trie_kvs_extract(&info, kvs, info.buckets, p_node);
-    trie_kvs_set(kvs, info.buckets, child);
+    struct trie_kv kvs[info->buckets];
+    trie_kvs_extract(info, kvs, info->buckets, p_node);
+    trie_kvs_set(kvs, info->buckets, child);
 
     return write_node(
-            r, info.key_len, info.has_value, info.value, kvs, info.buckets);
+            r, info->key_len, info->value_bits, info->value, kvs, info->buckets);
 }
 
 int
@@ -548,29 +548,12 @@ trie_node_add(
 {
     if (!node) return new_node(r, 0, 0, key_it, value);
 
+    void *p_node = ilka_region_read(r, node);
+
+    struct trie_kvs_info info;
+    trie_kvs_decode(&info, p_node);
+
     if (ilka_key_leftover(key_it) <= info.key_len)
-        return add_to_node(r, node, key_it, value);
-
-    return add_to_child(r, key_it, value);
-}
-
-
-// -----------------------------------------------------------------------------
-// set
-// -----------------------------------------------------------------------------
-
-int
-trie_node_cmp_xchg(
-        struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key_it, uint64_t *expected, uint64_t desired)
-{
-
-}
-
-int
-trie_node_cmp_rmv(
-        struct ilka_region *r, ilka_ptr_t node,
-        struct ilka_key_it key_it, uint64_t *expected)
-{
-
+        return add_to_node(r, node, p_node, &info, key_it, value);
+    return add_to_child(r, node, p_node, &info, key_it, value);
 }

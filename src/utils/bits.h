@@ -24,7 +24,7 @@ inline size_t pop(uint64_t x) { return __builtin_popcountll(x); }
 inline int is_pow2(uint64_t x) { return pop(x) == 1; }
 inline uint64_t ceil_pow2(size_t x)
 {
-    size_t max_bits = sizeof(uint64_t) * CHAR_BIT;
+    size_t max_bits = sizeof(uint64_t) * 8;
     return 1ULL << (max_bits - clz(x - 1) + 1);
 }
 
@@ -42,8 +42,8 @@ inline uint64_t leading_bit(uint64_t x)
 // bitfields
 // -----------------------------------------------------------------------------
 
-// for (size_t i = bitfield_next(bf); i < 64; i = bitfield_next(bf, i + 1)) {}
-static size_t bitfield_next(uint64_t bf, size_t bit = 0)
+// for (size_t i = bitfield_next(bf, 0); i < 64; i = bitfield_next(bf, i + 1)) {}
+inline size_t bitfield_next(uint64_t bf, size_t bit)
 {
     bf &= (1ULL << bit) -1;
     return ctz(bf);

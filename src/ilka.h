@@ -7,4 +7,5 @@
 
 #pragma once
 
-
+#include "key.h"
+#include "trie/trie.h"

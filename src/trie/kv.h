@@ -7,8 +7,9 @@
 
 */
 
-#include "key.h"
+#pragma once
 
+#include "key.h"
 
 // -----------------------------------------------------------------------------
 // kvs
@@ -70,11 +71,11 @@ int trie_kvs_info(
 void trie_kvs_decode(struct trie_kvs_info *info, const void *data);
 
 void trie_kvs_encode(
-        const struct trie_kvs_info *info,
+        struct trie_kvs_info *info,
         const struct trie_kv *kvs, size_t kvs_n,
         void *data);
 
-void trie_kvs_extract(
+size_t trie_kvs_extract(
         const struct trie_kvs_info *info,
         struct trie_kv *kvs, size_t kvs_n,
         const void *data);
@@ -91,10 +92,10 @@ void trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *d
 
 void trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv);
 int trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv);
-void trie_kvs_set(struct trie_kvs_info *info, struct trie_kv kv, void *data);
+void trie_kvs_set_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data);
 
 int trie_kvs_can_set_value_inplace(struct trie_kvs_info *info, uint64_t value);
-void trie_kvs_set_value_inplace(struct trie_kvs_info *info, uint64_t value);
+void trie_kvs_set_value_inplace(struct trie_kvs_info *info, uint64_t value, void *data);
 
 void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data);
 
@@ -122,5 +123,5 @@ struct trie_kvs_burst_info
 };
 
 void trie_kvs_burst(
-        struct trie_kvs_burst_info *burst, size_t key_len
+        struct trie_kvs_burst_info *burst, size_t key_len,
         const struct trie_kv *kvs, size_t kvs_n);

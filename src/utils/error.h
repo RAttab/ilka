@@ -15,10 +15,10 @@
 // -----------------------------------------------------------------------------
 
 void ilka_verror(const char *file, int line, const char *fmt, ...)
-    ilka_noreturn ilka_printf(3, 4)
+    ilka_noreturn ilka_printf(3, 4);
 
 void ilka_verror_errno(const char *file, int line, const char *fmt, ...)
-    ilka_noreturn ilka_printf(3, 4)
+    ilka_noreturn ilka_printf(3, 4);
 
 #define ilka_error(...)                                 \
     ilka_verror(__FILE__, __LINE__, __VA_ARGS__)
@@ -29,4 +29,4 @@ void ilka_verror_errno(const char *file, int line, const char *fmt, ...)
 #define ilka_assert(p, ...)                     \
     do {                                        \
         if (!(p)) ilka_error(__VA_ARGS__);      \
-    } while (false)
+    } while (0)

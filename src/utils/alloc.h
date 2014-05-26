@@ -7,20 +7,13 @@
 
 #pragma once
 
-#include "error.h"
-#include "compiler.h"
-
+#include <stdlib.h>
 
 // -----------------------------------------------------------------------------
 // alloc align
 // -----------------------------------------------------------------------------
 
-inline void * ilka_malloc_align(size_t n, size_t align = n)
-    ilka_malloc
+inline void * ilka_aligned_alloc(size_t alignment, size_t size)
 {
-    void *ptr;
-    if (ilka_likely(!posix_memalign(&ptr, align, n))) return ptr;
-
-    ilka_error_errno("aligned alloc failed for size <%ul> and alignment <%ul>",
-            n, align);
+    return ilka_aligned_alloc(alignment, size);
 }

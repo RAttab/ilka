@@ -25,26 +25,27 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # COMPILER TESTS
 #------------------------------------------------------------------------------#
 
-include(CheckCXXCompilerFlag)
+include(CheckCCompilerFlag)
 
-check_cxx_compiler_flag(-std=c++11 REFLECT_FLAG_C11)
-check_cxx_compiler_flag(-std=c++0x REFLECT_FLAG_C0X)
+check_c_compiler_flag(-std=c11 ILKA_FLAG_C99)
+check_c_compiler_flag(-std=c99 ILKA_FLAG_C11)
 
-if (REFLECT_FLAG_C11)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-elseif (REFLECT_FLAG_C0X)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+if (ILKA_FLAG_C11)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
+elseif (ILKA_FLAG_C99)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
 endif()
 
+include(CheckCXXCompilerFlag)
 
-#------------------------------------------------------------------------------#
-# ENV TEST
-#------------------------------------------------------------------------------#
+check_cxx_compiler_flag(-std=c++11 ILKA_FLAG_CPP11)
+check_cxx_compiler_flag(-std=c++0x ILKA_FLAG_CPP0X)
 
-include_directories("includes")
-
-include_directories("$ENV{HOME}/local/include")
-link_directories("$ENV{HOME}/local/lib")
+if (ILKA_FLAG_CPP11)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+elseif (ILKA_FLAG_CPP0X)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+endif()
 
 
 #------------------------------------------------------------------------------#
@@ -71,7 +72,10 @@ endif()
 
 include_directories("${PROJECT_SOURCE_DIR}/src")
 
-add_library(ilka SHARED src/ilka.c)
+add_library(ilka SHARED
+    src/ilka.c
+    src/utils/utils.c
+    src/trie/trie.c)
 
 
 #------------------------------------------------------------------------------#
@@ -99,4 +103,3 @@ function(ilka_test name)
     endif()
 endfunction()
 
-reflect_test(ref)
