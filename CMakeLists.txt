@@ -52,6 +52,12 @@ endif()
 # LIBRARIES
 #------------------------------------------------------------------------------#
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules")
+
+find_package(Check REQUIRED)
+include_directories(${CHECK_INCLUDE_DIRS})
+
+
 option(USE_TCMALLOC "Use tcmalloc for heap allocations." ON)
 find_library(LIB_TCMALLOC tcmalloc)
 
@@ -95,11 +101,14 @@ install(
 # TESTS
 #------------------------------------------------------------------------------#
 
+add_library(ilka_check SHARED tests/check.c)
+
 function(ilka_test name)
     if(CMAKE_SOURCE_DIR STREQUAL ${PROJECT_SOURCE_DIR})
-        add_executable(${name}_test tests/${name}_test.cpp)
-        target_link_libraries(${name}_test ilka)
+        add_executable(${name}_test tests/${name}_test.c)
+        target_link_libraries(${name}_test ilka ilka_check ${CHECK_LIBRARIES})
         add_test(${name} bin/${name}_test)
     endif()
 endfunction()
 
+ilka_test(bits)
