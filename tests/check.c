@@ -13,10 +13,8 @@ int ilka_tests(const char *name, ilka_make_suite_t make_suite)
     make_suite(suite);
 
     SRunner *runner = srunner_create(suite);
-
+    /* srunner_set_fork_status(runner, CK_NOFORK); */
     srunner_run_all(runner, CK_NORMAL);
-
     return srunner_ntests_failed(runner);
-
 }
 

@@ -13,11 +13,9 @@ START_TEST(next_bitfield)
 }
 END_TEST
 
-void make_suite(Suite *suite)
+void make_suite(Suite *s)
 {
-    TCase *tcase = tcase_create("next_bitfield");
-    tcase_add_test(tcase, next_bitfield);
-    suite_add_tcase(suite, tcase);
+    ilka_tc(s, next_bitfield);
 }
 
 int main(void)
