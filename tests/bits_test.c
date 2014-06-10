@@ -8,13 +8,19 @@
 #include "utils/bits.h"
 #include "check.h"
 
-#define check_bf_next(v, i, exp) \
-    ck_assert_int_eq(bitfield_next(v, i), exp)
-
 inline size_t floor_div(size_t n, size_t d) { return n / d; }
+
+
+// -----------------------------------------------------------------------------
+// checck bitfield next
+// -----------------------------------------------------------------------------
+
+#define check_bf_next(v, i, exp)                \
+    ck_assert_int_eq(bitfield_next(v, i), exp)
 
 START_TEST(check_bitfield_next)
 {
+
     for (size_t i = 0; i < 64; ++i)
         check_bf_next(0x0000000000000000UL, i, 64);
 
@@ -30,9 +36,34 @@ START_TEST(check_bitfield_next)
 END_TEST
 
 
+// -----------------------------------------------------------------------------
+// check leading bit
+// -----------------------------------------------------------------------------
+
+#define check_lbit(v, exp)                      \
+    ck_assert_int_eq(leading_bit(v), exp);
+
+START_TEST(check_leading_bit)
+{
+    check_lbit(0, 0);
+
+    for (size_t i = 0; i < 64; ++i)
+        check_lbit(1UL << i, 1UL << i);
+
+    for (size_t i = 1; i < 64; ++i)
+        check_lbit((1UL << i) - 1, 1UL << (i - 1));
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// setup
+// -----------------------------------------------------------------------------
+
 void make_suite(Suite *s)
 {
     ilka_tc(s, check_bitfield_next);
+    ilka_tc(s, check_leading_bit);
 }
 
 int main(void)
