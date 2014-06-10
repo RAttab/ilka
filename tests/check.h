@@ -8,6 +8,7 @@
 #pragma once
 
 #include <check.h>
+#include <stdio.h>
 
 typedef void (*ilka_make_suite_t)(Suite *);
 int ilka_tests(const char *name, ilka_make_suite_t make_suite);

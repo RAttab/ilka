@@ -14,8 +14,10 @@
 // builtin
 // -----------------------------------------------------------------------------
 
-inline size_t clz(uint64_t x) { return __builtin_clzll(x); }
-inline size_t ctz(uint64_t x) { return __builtin_ctzll(x); }
+/* The ctz and clz builtins are undefined for 0 because they're undefined on
+ * x86 */
+inline size_t clz(uint64_t x) { return x ? __builtin_clzll(x) : 64; }
+inline size_t ctz(uint64_t x) { return x ? __builtin_ctzll(x) : 64; }
 inline size_t pop(uint64_t x) { return __builtin_popcountll(x); }
 
 
@@ -44,9 +46,8 @@ inline uint64_t leading_bit(uint64_t x)
 // bitfields
 // -----------------------------------------------------------------------------
 
-// for (size_t i = bitfield_next(bf, 0); i < 64; i = bitfield_next(bf, i + 1)) {}
+// for (size_t i = bitfield_next(bf, 0); i < 64; i = bitfield_next(bf, i + 1))
 inline size_t bitfield_next(uint64_t bf, size_t bit)
 {
-    bf &= (1ULL << bit) -1;
-    return ctz(bf);
+    return ctz(bf & ~((1UL << bit) -1));
 }
