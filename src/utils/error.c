@@ -24,7 +24,7 @@ void ilka_verror(const char *file, int line, const char *fmt, ...)
     char buf[1024];
     (void) vsnprintf(buf, sizeof(buf) - 1, fmt, args);
 
-    printf("<%s:%d> %s\n", file, line, buf);
+    printf("%s:%d: %s\n", file, line, buf);
     abort();
 }
 
@@ -36,7 +36,7 @@ void ilka_verror_errno(const char *file, int line, const char *fmt, ...)
     char buf[1024];
     (void) vsnprintf(buf, sizeof(buf) - 1, fmt, args);
 
-    printf("<%s:%d> %s - %s(%d)\n", file, line, buf, strerror(errno), errno);
+    printf("%s:%d: %s - %s(%d)\n", file, line, buf, strerror(errno), errno);
     abort();
 }
 
