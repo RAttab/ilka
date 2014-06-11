@@ -112,3 +112,4 @@ function(ilka_test name)
 endfunction()
 
 ilka_test(bits)
+ilka_test(bit_coder)
