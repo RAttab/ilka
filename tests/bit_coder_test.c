@@ -10,6 +10,11 @@
 
 #include <signal.h>
 
+#define check_decode(coder, bits, exp)          \
+    do {                                        \
+        uint64_t r = bit_decode(coder, bits);   \
+        ck_assert_int_eq(r, exp);               \
+    } while(0);
 
 // -----------------------------------------------------------------------------
 // basics test
@@ -34,9 +39,108 @@ START_TEST(basics_test)
         bit_decoder_init(&coder, &a, sizeof(a));
         ck_assert_int_eq(bit_decoder_offset(&coder), 0);
 
-        uint8_t v = bit_decode(&coder, 8);
+        check_decode(&coder, 8, a);
         ck_assert_int_eq(bit_decoder_offset(&coder), 8);
-        ck_assert_int_eq(a, v);
+    }
+
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// complex test
+// -----------------------------------------------------------------------------
+
+START_TEST(complex_test)
+{
+    const uint64_t c5 = 0x5555555555555555UL;
+    const uint64_t cf = 0xFFFFFFFFFFFFFFFFUL;
+
+    uint64_t v[4] = { cf, cf, cf, cf };
+
+    {
+        size_t off = 0;
+        struct bit_encoder coder;
+        bit_encoder_init(&coder, v, sizeof(v));
+
+        off += 1;
+        bit_encode(&coder, 0, 1);
+        ck_assert_int_eq(bit_encoder_offset(&coder), off);
+
+        off += 64;
+        bit_encode(&coder, c5, 64);
+        ck_assert_int_eq(bit_encoder_offset(&coder), off);
+
+        off += 64;
+        bit_encode_skip(&coder, 64);
+        ck_assert_int_eq(bit_encoder_offset(&coder), off);
+
+        off += 63;
+        bit_encode(&coder, c5, 63);
+        ck_assert_int_eq(bit_encoder_offset(&coder), off);
+
+        for (size_t i = 0; i < 10; ++i) {
+            off += i;
+            bit_encode(&coder, i, i);
+            ck_assert_int_eq(bit_encoder_offset(&coder), off);
+        }
+    }
+
+    {
+        size_t off = 0;
+        struct bit_decoder coder;
+        bit_decoder_init(&coder, v, sizeof(v));
+
+        off += 1;
+        check_decode(&coder, 1, 0UL);
+        ck_assert_int_eq(bit_decoder_offset(&coder), off);
+
+        off += 64;
+        check_decode(&coder, 64, c5);
+        ck_assert_int_eq(bit_decoder_offset(&coder), off);
+
+        off += 64;
+        bit_decode_skip(&coder, 64);
+        ck_assert_int_eq(bit_decoder_offset(&coder), off);
+
+        off += 63;
+        check_decode(&coder, 63, c5);
+        ck_assert_int_eq(bit_decoder_offset(&coder), off);
+
+        for (size_t i = 0; i < 10; ++i) {
+            off += i;
+            check_decode(&coder, i, i);
+            ck_assert_int_eq(bit_decoder_offset(&coder), off);
+        }
+    }
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// skip test
+// -----------------------------------------------------------------------------
+
+START_TEST(skip_test)
+{
+    uint64_t v = 0xFFFFFFFFFFFFFFFFUL;
+
+    {
+        struct bit_encoder coder;
+        bit_encoder_init(&coder, &v, sizeof(v));
+
+        bit_encode(&coder, 0, 13);
+        bit_encode_skip(&coder, 17);
+        bit_encode(&coder, 0, 64 - 13 - 17);
+    }
+
+    {
+        struct bit_decoder coder;
+        bit_decoder_init(&coder, &v, sizeof(v));
+
+        check_decode(&coder, 13, 0);
+        check_decode(&coder, 17, (1UL << 17) - 1);
+        check_decode(&coder, 64 - 13 - 17, 0);
     }
 
 }
@@ -84,6 +188,9 @@ END_TEST
 void make_suite(Suite *s)
 {
     ilka_tc(s, basics_test);
+    ilka_tc(s, complex_test);
+    ilka_tc(s, skip_test);
+
     ilka_tc_signal(s, bound_test_1, SIGABRT);
     ilka_tc_signal(s, bound_test_2, SIGABRT);
     ilka_tc_signal(s, bound_test_3, SIGABRT);
