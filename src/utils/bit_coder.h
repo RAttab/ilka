@@ -4,14 +4,7 @@
 
    bit encoder decoder.
 
-   Note that we want bit_decode and bit_encode to be inline because the bits
-   parameter will usually be constant I'm hoping the compiler will be able to do
-   lots of DCE and constant propagation over long running sequences of call.
-   I need to confirm alot of this or optimize this code more carefully.
-
-   \todo There are x86 assembly instruction that can code across two uint64_t
-   word with the need for shifting and whatnot.
-
+   \todo confirm that compiler can take advantage of the inlining.
 */
 
 #pragma once
@@ -46,6 +39,12 @@ inline size_t
 bit_decoder_offset(struct bit_decoder *coder)
 {
     return (coder->data - coder->start) * 8 + coder->pos;
+}
+
+inline size_t
+bit_decoder_leftover(struct bit_decoder *coder)
+{
+    return ((coder->size - 1) * 8) + (8 - coder->pos);
 }
 
 inline void
@@ -116,6 +115,12 @@ inline size_t
 bit_encoder_offset(struct bit_encoder *coder)
 {
     return (coder->data - coder->start) * 8 + coder->pos;
+}
+
+inline size_t
+bit_encoder_leftover(struct bit_encoder *coder)
+{
+    return ((coder->size - 1) * 8) + (8 - coder->pos);
 }
 
 inline void
