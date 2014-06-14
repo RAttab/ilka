@@ -165,7 +165,7 @@ END_TEST
 // endian test
 // -----------------------------------------------------------------------------
 
-START_TEST(endian_test)
+void endian_test_impl(size_t bits)
 {
     uint64_t v = 0;
     const uint64_t c = 0x0123456789ABCDEFUL;
@@ -174,24 +174,28 @@ START_TEST(endian_test)
         struct bit_encoder coder;
         bit_encoder_init(&coder, &v, sizeof(v));
 
-        bit_encode(&coder, c, 32);
-        bit_encode(&coder, c >> 32, 32);
+        for (size_t i = 0; i < (64 / bits); ++i)
+            bit_encode(&coder, c >> (i * bits), bits);
     }
 
     {
         struct bit_decoder coder;
         bit_decoder_init(&coder, &v, sizeof(v));
 
-        check_decode(&coder, 8, 0xEF);
-        check_decode(&coder, 8, 0xCD);
-        check_decode(&coder, 8, 0xAB);
-        check_decode(&coder, 8, 0x89);
-
-        check_decode(&coder, 8, 0x67);
-        check_decode(&coder, 8, 0x45);
-        check_decode(&coder, 8, 0x23);
-        check_decode(&coder, 8, 0x01);
+        for (size_t i = 0; i < 8; ++i)
+            check_decode(&coder, 8, (c >> (i * 8)) & 0xFF);
     }
+}
+
+START_TEST(endian_test)
+{
+    endian_test_impl( 1);
+    endian_test_impl( 2);
+    endian_test_impl( 4);
+    endian_test_impl( 8);
+    endian_test_impl(16);
+    endian_test_impl(32);
+    endian_test_impl(64);
 }
 END_TEST
 
