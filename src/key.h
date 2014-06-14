@@ -50,6 +50,8 @@ int ilka_key_end(struct ilka_key_it it);
 struct ilka_key_it ilka_key_begin(struct ilka_key *key);
 size_t ilka_key_leftover(struct ilka_key_it it);
 
+int ilka_key_cmp(struct ilka_key *lhs, struct ilka_key *rhs);
+
 void ilka_key_write_8(struct ilka_key_it *it, uint8_t data);
 void ilka_key_write_16(struct ilka_key_it *it, uint16_t data);
 void ilka_key_write_32(struct ilka_key_it *it, uint32_t data);

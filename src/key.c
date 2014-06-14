@@ -217,6 +217,35 @@ ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits)
 
 
 // -----------------------------------------------------------------------------
+// cmp
+// -----------------------------------------------------------------------------
+
+int
+ilka_key_cmp(struct ilka_key *lhs, struct ilka_key *rhs)
+{
+    size_t n = lhs->size < rhs->size ? lhs->size : rhs->size;
+
+    struct ilka_key_chunk *lhs_chunk = &lhs->chunk;
+    struct ilka_key_chunk *rhs_chunk = &rhs->chunk;
+
+    while (n > 0) {
+        size_t avail = n < ILKA_KEY_CHUNK_SIZE ? n : ILKA_KEY_CHUNK_SIZE;
+
+        int r = memcmp(lhs_chunk->bytes, rhs_chunk->bytes, avail);
+        if (r) return r;
+
+        n -= avail;
+        if (avail == ILKA_KEY_CHUNK_SIZE) {
+            lhs_chunk = lhs_chunk->next;
+            rhs_chunk = rhs_chunk->next;
+        }
+    }
+
+    return lhs->size - rhs->size;
+}
+
+
+// -----------------------------------------------------------------------------
 // write
 // -----------------------------------------------------------------------------
 
