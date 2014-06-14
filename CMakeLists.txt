@@ -113,3 +113,4 @@ endfunction()
 
 ilka_test(bits)
 ilka_test(bit_coder)
+ilka_test(key)

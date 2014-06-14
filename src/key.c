@@ -129,8 +129,9 @@ ilka_key_end(struct ilka_key_it it)
 size_t
 ilka_key_leftover(struct ilka_key_it it)
 {
-    return (8 - (it.pos % 8))
-        + (it.key->size - (it.pos / 8 + 1));
+    size_t bit_pos = it.pos % 8;
+    size_t bit_leftover = bit_pos ? 8 - bit_pos : 0;
+    return bit_leftover + (it.key->size - ceil_div(it.pos, 8)) * 8;
 }
 
 static size_t
