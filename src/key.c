@@ -10,6 +10,7 @@
 #include "utils/alloc.h"
 #include "utils/error.h"
 #include "utils/endian.h"
+#include "utils/bit_coder.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -37,7 +38,7 @@ add_chunk(struct ilka_key_chunk *chunk)
         chunk->next->next = NULL;
     }
 
-    memset(chunk->next->data.bytes, 0, sizeof(struct ilka_key_chunk));
+    memset(chunk->next->bytes, 0, sizeof(struct ilka_key_chunk));
 }
 
 static void
@@ -81,7 +82,7 @@ ilka_key_reset(struct ilka_key *key)
 {
     key->size = 0;
     key->last = &key->chunk;
-    memset(&key->chunk.data, 0, ILKA_KEY_CHUNK_SIZE);
+    memset(&key->chunk.bytes, 0, ILKA_KEY_CHUNK_SIZE);
 }
 
 void
@@ -94,7 +95,7 @@ ilka_key_copy(struct ilka_key * restrict key, struct ilka_key * restrict other)
 
     while (1) {
         key->last = dest;
-        memcpy(dest->data.bytes, src->data.bytes, ILKA_KEY_CHUNK_SIZE);
+        memcpy(dest->bytes, src->bytes, ILKA_KEY_CHUNK_SIZE);
 
         if (!src->next) break;
         add_chunk(dest);
@@ -107,23 +108,6 @@ ilka_key_copy(struct ilka_key * restrict key, struct ilka_key * restrict other)
 // -----------------------------------------------------------------------------
 // iterators
 // -----------------------------------------------------------------------------
-
-static void
-advance(struct ilka_key_it *it, size_t bits)
-{
-    size_t old = (it->pos / 8) / ILKA_KEY_CHUNK_SIZE;
-    it->pos += bits;
-    size_t cur = (it->pos / 8) / ILKA_KEY_CHUNK_SIZE;
-
-    if (old == cur) return;
-
-    it->chunk = it->chunk->next;
-    if (it->chunk) return;
-
-    ilka_error("moved into an empty chunk at pos <%lu> of <%lu>",
-            it->pos / 8, it->key->size);
-}
-
 
 struct ilka_key_it
 ilka_key_begin(struct ilka_key *key)
@@ -149,11 +133,35 @@ ilka_key_leftover(struct ilka_key_it it)
         + (it.key->size - (it.pos / 8 + 1));
 }
 
+static size_t
+chunk_pos(struct ilka_key_it it)
+{
+    return it.pos % (ILKA_KEY_CHUNK_SIZE * 8);
+}
+
+static size_t
+chunk_avail(struct ilka_key_it it)
+{
+    return (ILKA_KEY_CHUNK_SIZE * 8) - chunk_pos(it);
+}
+
+static void
+advance(struct ilka_key_it *it, size_t bits)
+{
+    if (chunk_avail(*it) < bits)
+        it->chunk = it->chunk->next;
+    it->pos += bits;
+}
+
+
+// -----------------------------------------------------------------------------
+// bits
+// -----------------------------------------------------------------------------
 
 uint64_t
 ilka_key_peek(struct ilka_key_it it, size_t bits)
 {
-    if (bits > sizeof(uint64_t))
+    if (bits > sizeof(uint64_t) * 8)
         ilka_error("poping <%lu> bits beyond static limits <64>", bits);
 
     size_t end = it.key->size * 8;
@@ -161,25 +169,21 @@ ilka_key_peek(struct ilka_key_it it, size_t bits)
         ilka_error("poping <%lu> bits beyond end of key <%lu>", bits, end);
 
 
-    size_t i = it.pos % 64;
-    size_t n = 64 - i;
+    struct bit_decoder coder;
+    bit_decoder_init(&coder, it.chunk->bytes, ILKA_KEY_CHUNK_SIZE);
+    bit_decode_skip(&coder, chunk_pos(it));
 
-    size_t word = (it.pos / 64) % ILKA_KEY_CHUNK_WORDS;
-    uint64_t data = it.chunk->data.words[word] >> i;
+    size_t avail = bit_decoder_leftover(&coder);
+    uint64_t data = bit_decode(&coder, avail >= bits ? bits : avail);
 
-    if (bits > n) {
-        struct ilka_key_chunk *chunk = it.chunk;
+    if (avail < bits) {
+        bit_decoder_init(&coder, it.chunk->next->bytes, ILKA_KEY_CHUNK_SIZE);
 
-        word++;
-        if (word == ILKA_KEY_CHUNK_WORDS) {
-            chunk = chunk->next;
-            word = 0;
-        }
-
-        data |= chunk->data.words[word] << n;
+        data <<= avail;
+        data |= bit_decode(&coder, bits - avail);
     }
 
-    return data & ((1 << bits) - 1);
+    return data;
 }
 
 
@@ -196,164 +200,142 @@ ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits)
 {
     reserve(it->key, ceil_div(it->pos + bits, 8));
 
-    data &= (1 << bits) - 1;
+    struct bit_encoder coder;
+    bit_encoder_init(&coder, it->chunk, ILKA_KEY_CHUNK_SIZE);
+    bit_encode_skip(&coder, chunk_pos(*it));
 
-    size_t i = it->pos % 64;
-    size_t n = 64 - i;
+    size_t avail = bit_encoder_leftover(&coder);
+    bit_encode(&coder, data, avail >= bits ? bits : avail);
 
-    size_t word = (it->pos / 64) % ILKA_KEY_CHUNK_WORDS;
-    it->chunk->data.words[word] |= data << i;
-
-    // will move the chunk forward if needed,
     advance(it, bits);
 
-    if (bits > n) {
-        word = (word + 1) % ILKA_KEY_CHUNK_WORDS;
-        it->chunk->data.words[word] = data >> n;
+    if (avail < bits) {
+        bit_encoder_init(&coder, it->chunk, ILKA_KEY_CHUNK_SIZE);
+        bit_encode(&coder, data >> avail, bits - avail);
     }
-
-    it->key->size = ceil_div(it->pos, 8);
 }
 
 
 // -----------------------------------------------------------------------------
-// append
+// write
 // -----------------------------------------------------------------------------
 
+void
+ilka_key_write_8(struct ilka_key_it *it, uint8_t data)
+{
+    ilka_key_write_str(it, &data, sizeof(data));
+}
 
 void
-ilka_key_append_bytes(
-        struct ilka_key *key, const uint8_t * restrict src, size_t n)
+ilka_key_write_16(struct ilka_key_it *it, uint16_t data)
 {
-    if (!n) return;
+    data = htobe16(data);
+    ilka_key_write_str(it, (uint8_t*) &data, sizeof(data));
+}
 
-    size_t pos = key->size % ILKA_KEY_CHUNK_SIZE;
-    size_t avail = pos - ILKA_KEY_CHUNK_SIZE;
-    uint8_t* dest = key->last->data.bytes + pos;
+void
+ilka_key_write_32(struct ilka_key_it *it, uint32_t data)
+{
+    data = htobe32(data);
+    ilka_key_write_str(it, (uint8_t*) &data, sizeof(data));
+}
 
-    reserve(key, key->size + n);
+void
+ilka_key_write_64(struct ilka_key_it *it, uint64_t data)
+{
+    data = htobe64(data);
+    ilka_key_write_str(it, (uint8_t*) &data, sizeof(data));
+}
 
-    while (n > avail) {
-        memcpy(dest, src, avail);
+void
+ilka_key_write_str(struct ilka_key_it *it, const uint8_t *data, size_t data_n)
+{
+    if (it->pos % 8)
+        ilka_error("writting to misaligned key iterator <%lu>", it->pos);
 
-        n -= avail;
+    reserve(it->key, it->pos / 8 + data_n);
+
+    size_t avail = chunk_avail(*it);
+    struct ilka_key_chunk *chunk = it->chunk;
+
+    while (data_n > 0) {
+        size_t to_copy = avail < data_n ? avail : data_n;
+        uint8_t *dest = chunk->bytes + (ILKA_KEY_CHUNK_SIZE - avail);
+
+        memcpy(dest, data, to_copy);
+
+        data += to_copy;
+        data_n -= to_copy;
+
         avail = ILKA_KEY_CHUNK_SIZE;
-        dest = key->last->data.bytes;
+        if (to_copy == avail)
+            chunk = chunk->next;
     }
-}
-
-void
-ilka_key_append_16(struct ilka_key *key, uint16_t data)
-{
-    union
-    {
-        uint8_t int8;
-        uint16_t int16;
-    } pun;
-
-    pun.int16 = htobe16(data);
-    ilka_key_append_bytes(key, &pun.int8, sizeof(pun.int16));
-}
-
-void
-ilka_key_append_32(struct ilka_key *key, uint32_t data)
-{
-    union
-    {
-        uint8_t int8;
-        uint32_t int32;
-    } pun;
-
-    pun.int32 = htobe32(data);
-    ilka_key_append_bytes(key, &pun.int8, sizeof(pun.int32));
-}
-
-void
-ilka_key_append_64(struct ilka_key *key, uint64_t data)
-{
-    union
-    {
-        uint8_t int8;
-        uint64_t int64;
-    } pun;
-
-    pun.int64 = htobe64(data);
-    ilka_key_append_bytes(key, &pun.int8, sizeof(pun.int64));
 }
 
 
 // -----------------------------------------------------------------------------
-// extract
+// read
 // -----------------------------------------------------------------------------
 
-struct ilka_key_it
-ilka_key_extract_bytes(struct ilka_key_it it, uint8_t * restrict data, size_t n)
-{
-    if (it.pos % 8)
-        ilka_error("extracting from misaligned key iterator <%lu>", it.pos);
 
-    if (it.pos / 8 + n > it.key->size) {
-        ilka_error("extracting bytes past the end of key <%lu + %lu > %lu>",
-                it.pos / 8, n, it.key->size);
+uint8_t
+ilka_key_read_8(struct ilka_key_it *it)
+{
+    uint8_t data;
+    ilka_key_read_str(it, &data, sizeof(data));
+    return data;
+}
+
+uint16_t
+ilka_key_read_16(struct ilka_key_it *it)
+{
+    uint16_t data;
+    ilka_key_read_str(it, (uint8_t*) &data, sizeof(data));
+    return be16toh(data);
+}
+
+uint32_t
+ilka_key_read_32(struct ilka_key_it *it)
+{
+    uint32_t data;
+    ilka_key_read_str(it, (uint8_t*) &data, sizeof(data));
+    return be32toh(data);
+}
+
+uint64_t
+ilka_key_read_64(struct ilka_key_it *it)
+{
+    uint64_t data;
+    ilka_key_read_str(it, (uint8_t*) &data, sizeof(data));
+    return be64toh(data);
+}
+
+void
+ilka_key_read_str(struct ilka_key_it *it, uint8_t *data, size_t data_n)
+{
+    if (it->pos % 8)
+        ilka_error("reading misaligned key iterator <%lu>", it->pos);
+
+    if (data_n + it->pos / 8 > it->key->size) {
+        ilka_error("reading <%lu> bytes beyond end of key <%lu>",
+                data_n, it->key->size);
     }
 
-    if (!n) return it;
+    size_t avail = chunk_avail(*it);
 
-    size_t pos = (it.pos / 8) % ILKA_KEY_CHUNK_SIZE;
-    size_t avail = ILKA_KEY_CHUNK_SIZE - pos;
+    while (data_n > 0) {
+        size_t to_copy = avail < data_n ? avail : data_n;
+        uint8_t *src = it->chunk->bytes + (ILKA_KEY_CHUNK_SIZE - avail);
 
-    while (n) {
-        size_t size = n > avail ? avail : n;
-        memcpy(data, it.chunk->data.bytes, size);
+        memcpy(data, src, to_copy);
 
-        n -= size;
-        data += size;
+        data += to_copy;
+        data_n -= to_copy;
+        it->pos += to_copy;
+
         avail = ILKA_KEY_CHUNK_SIZE;
-        if (size == avail) it.chunk = it.chunk->next;
+        if (to_copy == avail)
+            it->chunk = it->chunk->next;
     }
-
-    it.pos += n * 8;
-    return it;
-}
-
-struct ilka_key_it
-ilka_key_extract_16(struct ilka_key_it it, uint16_t *data)
-{
-    union
-    {
-        uint8_t int8;
-        uint16_t int16;
-    } pun;
-
-    it = ilka_key_extract_bytes(it, &pun.int8, sizeof(pun.int16));
-    *data = be16toh(pun.int16);
-    return it;
-}
-
-struct ilka_key_it
-ilka_key_extract_32(struct ilka_key_it it, uint32_t *data)
-{
-    union
-    {
-        uint8_t int8;
-        uint32_t int32;
-    } pun;
-
-    it = ilka_key_extract_bytes(it, &pun.int8, sizeof(pun.int32));
-    *data = be32toh(pun.int32);
-    return it;
-}
-
-struct ilka_key_it
-ilka_key_extract_64(struct ilka_key_it it, uint64_t *data)
-{
-    union
-    {
-        uint8_t int8;
-        uint64_t int64;
-    } pun;
-
-    it = ilka_key_extract_bytes(it, &pun.int8, sizeof(uint64_t));
-    *data = be64toh(pun.int64);
-    return it;
 }
