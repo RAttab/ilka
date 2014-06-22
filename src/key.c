@@ -253,32 +253,38 @@ ilka_key_cmp(struct ilka_key *lhs, struct ilka_key *rhs)
 void
 ilka_key_write_8(struct ilka_key_it *it, uint8_t data)
 {
-    ilka_key_write_str(it, &data, sizeof(data));
+    ilka_key_write_bytes(it, &data, sizeof(data));
 }
 
 void
 ilka_key_write_16(struct ilka_key_it *it, uint16_t data)
 {
     data = htobe16(data);
-    ilka_key_write_str(it, (uint8_t*) &data, sizeof(data));
+    ilka_key_write_bytes(it, (uint8_t*) &data, sizeof(data));
 }
 
 void
 ilka_key_write_32(struct ilka_key_it *it, uint32_t data)
 {
     data = htobe32(data);
-    ilka_key_write_str(it, (uint8_t*) &data, sizeof(data));
+    ilka_key_write_bytes(it, (uint8_t*) &data, sizeof(data));
 }
 
 void
 ilka_key_write_64(struct ilka_key_it *it, uint64_t data)
 {
     data = htobe64(data);
-    ilka_key_write_str(it, (uint8_t*) &data, sizeof(data));
+    ilka_key_write_bytes(it, (uint8_t*) &data, sizeof(data));
 }
 
 void
-ilka_key_write_str(struct ilka_key_it *it, const uint8_t *data, size_t data_n)
+ilka_key_write_str(struct ilka_key_it *it, const char *data, size_t data_n)
+{
+    ilka_key_write_bytes(it, (const uint8_t *) data, data_n);
+}
+
+void
+ilka_key_write_bytes(struct ilka_key_it *it, const uint8_t *data, size_t data_n)
 {
     if (it->pos % 8)
         ilka_error("writting to misaligned key iterator <%lu>", it->pos);
@@ -301,6 +307,8 @@ ilka_key_write_str(struct ilka_key_it *it, const uint8_t *data, size_t data_n)
         if (to_copy == avail)
             chunk = chunk->next;
     }
+
+    it->key->size = it->pos / 8;
 }
 
 
@@ -313,7 +321,7 @@ uint8_t
 ilka_key_read_8(struct ilka_key_it *it)
 {
     uint8_t data;
-    ilka_key_read_str(it, &data, sizeof(data));
+    ilka_key_read_bytes(it, &data, sizeof(data));
     return data;
 }
 
@@ -321,7 +329,7 @@ uint16_t
 ilka_key_read_16(struct ilka_key_it *it)
 {
     uint16_t data;
-    ilka_key_read_str(it, (uint8_t*) &data, sizeof(data));
+    ilka_key_read_bytes(it, (uint8_t*) &data, sizeof(data));
     return be16toh(data);
 }
 
@@ -329,7 +337,7 @@ uint32_t
 ilka_key_read_32(struct ilka_key_it *it)
 {
     uint32_t data;
-    ilka_key_read_str(it, (uint8_t*) &data, sizeof(data));
+    ilka_key_read_bytes(it, (uint8_t*) &data, sizeof(data));
     return be32toh(data);
 }
 
@@ -337,12 +345,18 @@ uint64_t
 ilka_key_read_64(struct ilka_key_it *it)
 {
     uint64_t data;
-    ilka_key_read_str(it, (uint8_t*) &data, sizeof(data));
+    ilka_key_read_bytes(it, (uint8_t*) &data, sizeof(data));
     return be64toh(data);
 }
 
 void
-ilka_key_read_str(struct ilka_key_it *it, uint8_t *data, size_t data_n)
+ilka_key_read_str(struct ilka_key_it *it, char *data, size_t data_n)
+{
+    ilka_key_read_bytes(it, (uint8_t *) data, data_n);
+}
+
+void
+ilka_key_read_bytes(struct ilka_key_it *it, uint8_t *data, size_t data_n)
 {
     if (it->pos % 8)
         ilka_error("reading misaligned key iterator <%lu>", it->pos);
