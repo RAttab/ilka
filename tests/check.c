@@ -7,13 +7,31 @@
 
 #include "check.h"
 
+#include <stdlib.h>
+
+
+// -----------------------------------------------------------------------------
+// test utils
+// -----------------------------------------------------------------------------
+
+static void config_runner(SRunner *runner)
+{
+    printf("Fork test case(s): ");
+    if (getenv("ILKA_NOFORK")) {
+        srunner_set_fork_status(runner, CK_NOFORK);
+        printf("no\n");
+    }
+    else printf("yes\n");
+}
+
 int ilka_tests(const char *name, ilka_make_suite_t make_suite)
 {
     Suite *suite = suite_create(name);
     make_suite(suite);
 
     SRunner *runner = srunner_create(suite);
-    /* srunner_set_fork_status(runner, CK_NOFORK); */
+    config_runner(runner);
+
     srunner_run_all(runner, CK_NORMAL);
     return srunner_ntests_failed(runner);
 }
