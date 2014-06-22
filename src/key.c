@@ -12,6 +12,7 @@
 #include "utils/endian.h"
 #include "utils/bit_coder.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -159,11 +160,11 @@ advance(struct ilka_key_it *it, size_t bits)
 uint64_t
 ilka_key_peek(struct ilka_key_it it, size_t bits)
 {
-    if (bits > sizeof(uint64_t) * 8)
+    if (ilka_unlikely(bits > sizeof(uint64_t) * 8))
         ilka_error("poping <%lu> bits beyond static limits <64>", bits);
 
     size_t end = it.key->size * 8;
-    if (bits + it.pos > end)
+    if (ilka_unlikely(bits + it.pos > end))
         ilka_error("poping <%lu> bits beyond end of key <%lu>", bits, end);
 
 
@@ -283,7 +284,7 @@ ilka_key_write_str(struct ilka_key_it *it, const char *data, size_t data_n)
 void
 ilka_key_write_bytes(struct ilka_key_it *it, const uint8_t *data, size_t data_n)
 {
-    if (it->pos % 8)
+    if (ilka_unlikely(it->pos % 8))
         ilka_error("writting to misaligned key iterator <%lu>", it->pos);
 
     reserve(it->key, it->pos / 8 + data_n);
@@ -352,10 +353,10 @@ ilka_key_read_str(struct ilka_key_it *it, char *data, size_t data_n)
 void
 ilka_key_read_bytes(struct ilka_key_it *it, uint8_t *data, size_t data_n)
 {
-    if (it->pos % 8)
+    if (ilka_unlikely(it->pos % 8))
         ilka_error("reading misaligned key iterator <%lu>", it->pos);
 
-    if (data_n + it->pos / 8 > it->key->size) {
+    if (ilka_unlikely(data_n + it->pos / 8 > it->key->size)) {
         ilka_error("reading <%lu> bytes beyond end of key <%lu>",
                 data_n, it->key->size);
     }
