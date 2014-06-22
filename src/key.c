@@ -38,7 +38,7 @@ add_chunk(struct ilka_key_chunk *chunk)
         chunk->next->next = NULL;
     }
 
-    memset(chunk->next->bytes, 0, sizeof(struct ilka_key_chunk));
+    memset(chunk->next->bytes, 0, ILKA_KEY_CHUNK_SIZE);
 }
 
 static void
@@ -47,9 +47,8 @@ reserve(struct ilka_key *key, size_t size)
     if (key->size >= size) return;
 
     size_t diff = size - key->size;
-
     size_t pos = size % ILKA_KEY_CHUNK_SIZE;
-    size_t avail = pos - ILKA_KEY_CHUNK_SIZE;
+    size_t avail = ILKA_KEY_CHUNK_SIZE - pos;
 
     while (diff > avail) {
         add_chunk(key->last);
@@ -58,8 +57,6 @@ reserve(struct ilka_key *key, size_t size)
         diff -= avail;
         avail = ILKA_KEY_CHUNK_SIZE;
     }
-
-    key->size = size;
 }
 
 
@@ -291,24 +288,21 @@ ilka_key_write_bytes(struct ilka_key_it *it, const uint8_t *data, size_t data_n)
 
     reserve(it->key, it->pos / 8 + data_n);
 
-    size_t avail = chunk_avail(*it);
-    struct ilka_key_chunk *chunk = it->chunk;
+    size_t avail = chunk_avail(*it) / 8;
+    it->pos += data_n * 8;
+    it->key->size = it->pos / 8;
 
     while (data_n > 0) {
         size_t to_copy = avail < data_n ? avail : data_n;
-        uint8_t *dest = chunk->bytes + (ILKA_KEY_CHUNK_SIZE - avail);
+        uint8_t *dest = it->chunk->bytes + (ILKA_KEY_CHUNK_SIZE - avail);
 
         memcpy(dest, data, to_copy);
 
         data += to_copy;
         data_n -= to_copy;
-
+        if (to_copy == avail) it->chunk = it->chunk->next;
         avail = ILKA_KEY_CHUNK_SIZE;
-        if (to_copy == avail)
-            chunk = chunk->next;
     }
-
-    it->key->size = it->pos / 8;
 }
 
 
@@ -366,7 +360,8 @@ ilka_key_read_bytes(struct ilka_key_it *it, uint8_t *data, size_t data_n)
                 data_n, it->key->size);
     }
 
-    size_t avail = chunk_avail(*it);
+    size_t avail = chunk_avail(*it) / 8;
+    it->pos += data_n * 8;
 
     while (data_n > 0) {
         size_t to_copy = avail < data_n ? avail : data_n;
@@ -376,10 +371,7 @@ ilka_key_read_bytes(struct ilka_key_it *it, uint8_t *data, size_t data_n)
 
         data += to_copy;
         data_n -= to_copy;
-        it->pos += to_copy;
-
+        if (to_copy == avail) it->chunk = it->chunk->next;
         avail = ILKA_KEY_CHUNK_SIZE;
-        if (to_copy == avail)
-            it->chunk = it->chunk->next;
     }
 }
