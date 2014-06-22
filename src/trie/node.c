@@ -421,7 +421,7 @@ add_burst(
     int add_to_suffix = leftover > burst.prefix_bits;
     int is_value_of_prefix = leftover == burst.prefix_bits;
 
-    uint64_t prefix;
+    uint64_t prefix = 0;
     if (add_to_suffix || is_value_of_prefix)
         prefix = ilka_key_pop(&key_it, burst.prefix_bits);
 
