@@ -71,7 +71,7 @@ bit_decode(struct bit_decoder *coder, size_t bits)
     bit_decoder_check(coder, bits);
 
     uint64_t value = *((uint64_t*) coder->data);
-    value = (value >> coder->pos) & ((1 << bits) - 1);
+    value = (value >> coder->pos) & ((1UL << bits) - 1);
 
     bit_decode_skip(coder, bits);
     return value;
@@ -147,7 +147,7 @@ bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
 {
     bit_encoder_check(coder, bits);
 
-    uint64_t mask = ((1ULL << bits) - 1) << coder->pos;
+    uint64_t mask = ((1UL << bits) - 1) << coder->pos;
     value = (value << coder->pos) & mask;
 
     uint64_t* p = (uint64_t*) coder->data;
@@ -165,7 +165,7 @@ bit_encode_atomic(
 {
     bit_encoder_check(coder, bits);
 
-    uint64_t mask = ((1ULL << bits) - 1) << coder->pos;
+    uint64_t mask = ((1UL << bits) - 1) << coder->pos;
     value = (value << coder->pos) & mask;
 
     uint64_t* p = (uint64_t*) coder->data;
