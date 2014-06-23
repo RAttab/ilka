@@ -130,7 +130,6 @@ END_TEST
 // bits_test
 // -----------------------------------------------------------------------------
 
-
 /* printf("check_pop: value=%p, exp=%p, eq=%d\n", (void *) peek, (void *) (exp), peek == (exp)); \ */
 
 #define check_pop(it, bits, exp)                        \
@@ -142,10 +141,12 @@ END_TEST
         ck_assert_int_eq(pop, exp);                     \
     } while(0)
 
+
 START_TEST(bits_test)
 {
     struct ilka_key k;
     ilka_key_init(&k);
+
 
     const uint64_t c = 0xFEDCBA0987654321;
     const size_t chunks = (ILKA_KEY_CHUNK_SIZE + 1) * 2;
@@ -206,13 +207,73 @@ END_TEST
 // cmp_test
 // -----------------------------------------------------------------------------
 
-START_TEST(cmp_test)
+struct ilka_key
+make_key_impl(const char *data, size_t data_n)
 {
     struct ilka_key k;
     ilka_key_init(&k);
 
+    struct ilka_key_it it = ilka_key_begin(&k);
+    ilka_key_write_bytes(&it, (const uint8_t *) data, data_n);
 
-    ilka_key_free(&k);
+    return k;
+}
+
+#define small_prefix "ab"
+#define long_prefix                                                     \
+    "this is a long prefix and it's long because I want it to be long."
+#define make_key(str) make_key_impl(str, sizeof(str))
+
+START_TEST(cmp_test)
+{
+    struct ilka_key ks   = make_key(small_prefix);
+    struct ilka_key ks_a = make_key(small_prefix "a");
+    struct ilka_key ks_b = make_key(small_prefix "b");
+    struct ilka_key ks_c = make_key(small_prefix "c");
+    struct ilka_key ks_l = make_key(small_prefix long_prefix);
+
+    struct ilka_key kl   = make_key(long_prefix);
+    struct ilka_key kl_a = make_key(long_prefix "a");
+    struct ilka_key kl_b = make_key(long_prefix "b");
+    struct ilka_key kl_c = make_key(long_prefix "c");
+
+    ck_assert(!ilka_key_cmp(&ks, &ks));
+    ck_assert(!ilka_key_cmp(&kl, &kl));
+    ck_assert(!ilka_key_cmp(&ks_a, &ks_a));
+    ck_assert(!ilka_key_cmp(&ks_l, &ks_l));
+    ck_assert(!ilka_key_cmp(&kl_a, &kl_a));
+
+    ck_assert(ilka_key_cmp(&ks, &ks_a) < 0);
+    ck_assert(ilka_key_cmp(&ks_a, &ks) > 0);
+
+    ck_assert(ilka_key_cmp(&ks_a, &ks_b) < 0);
+    ck_assert(ilka_key_cmp(&ks_b, &ks_a) > 0);
+
+    ck_assert(ilka_key_cmp(&ks_c, &ks_b) > 0);
+    ck_assert(ilka_key_cmp(&ks_b, &ks_c) < 0);
+
+    ck_assert(ilka_key_cmp(&ks, &ks_l) < 0);
+    ck_assert(ilka_key_cmp(&ks_l, &ks) > 0);
+
+    ck_assert(ilka_key_cmp(&kl, &kl_a) < 0);
+    ck_assert(ilka_key_cmp(&kl_a, &kl) > 0);
+
+    ck_assert(ilka_key_cmp(&kl_a, &kl_b) < 0);
+    ck_assert(ilka_key_cmp(&kl_b, &kl_a) > 0);
+
+    ck_assert(ilka_key_cmp(&kl_c, &kl_b) > 0);
+    ck_assert(ilka_key_cmp(&kl_b, &kl_c) < 0);
+
+    ilka_key_free(&ks);
+    ilka_key_free(&ks_a);
+    ilka_key_free(&ks_b);
+    ilka_key_free(&ks_c);
+    ilka_key_free(&ks_l);
+
+    ilka_key_free(&kl);
+    ilka_key_free(&kl_a);
+    ilka_key_free(&kl_b);
+    ilka_key_free(&kl_c);
 }
 END_TEST
 
