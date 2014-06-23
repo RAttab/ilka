@@ -70,17 +70,28 @@ bit_decode(struct bit_decoder *coder, size_t bits)
 {
     bit_decoder_check(coder, bits);
 
-    uint64_t value = *((uint64_t*) coder->data);
-    value = (value >> coder->pos) & ((1UL << bits) - 1);
+    uint64_t value = *((uint64_t*) coder->data) >> coder->pos;
 
-    bit_decode_skip(coder, bits);
-    return value;
+    size_t avail = 64 - coder->pos;
+    bit_decode_skip(coder, avail < bits ? avail : bits);
+
+    if (avail < bits) {
+        uint64_t leftover = *((uint64_t*) coder->data) >> coder->pos;
+        value |= leftover << avail;
+
+        bit_decode_skip(coder, bits - avail);
+    }
+
+    return value & ((1UL << bits) - 1);
 }
 
 inline uint64_t
 bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_order order)
 {
     bit_decoder_check(coder, bits);
+    ilka_assert(bits + coder->pos <= 64,
+            "misaligned atomic bit decoding <%zu>",
+            bits + coder->pos);
 
     uint64_t value = ilka_atomic_load((uint64_t*) coder->data, order);
     value = (value >> coder->pos) & ((1 << bits) - 1);
@@ -147,13 +158,21 @@ bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
 {
     bit_encoder_check(coder, bits);
 
-    uint64_t mask = ((1UL << bits) - 1) << coder->pos;
-    value = (value << coder->pos) & mask;
+    uint64_t mask = (1UL << bits) - 1;
+    value &= mask;
 
-    uint64_t* p = (uint64_t*) coder->data;
-    *p = (*p & ~mask) | value;
+    uint64_t *p = (uint64_t *) coder->data;
+    *p = (*p & ~(mask << coder->pos)) | (value << coder->pos);
 
-    bit_encode_skip(coder, bits);
+    size_t avail = 64 - coder->pos;
+    bit_encode_skip(coder, avail < bits ? avail : bits);
+
+    if (avail < bits) {
+        uint64_t *p = (uint64_t *) coder->data;
+        *p = (*p & ~(mask >> avail)) | (value >> avail);
+
+        bit_encode_skip(coder, bits - avail);
+    }
 }
 
 
@@ -164,6 +183,9 @@ bit_encode_atomic(
         enum memory_order order)
 {
     bit_encoder_check(coder, bits);
+    ilka_assert(bits + coder->pos <= 64,
+            "misaligned atomic bit encoding <%zu>",
+            bits + coder->pos);
 
     uint64_t mask = ((1UL << bits) - 1) << coder->pos;
     value = (value << coder->pos) & mask;

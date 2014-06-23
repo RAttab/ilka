@@ -162,6 +162,39 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// edge_test
+// -----------------------------------------------------------------------------
+
+START_TEST(edge_test)
+{
+    uint64_t v[2] = { 0 };
+    const uint64_t c = 0xFFFFFFFFFFFFFFFFUL;
+
+    for (size_t i = 0; i < 8; ++i) {
+        {
+            struct bit_encoder coder;
+            bit_encoder_init(&coder, v, sizeof(v));
+            bit_encode_skip(&coder, i);
+            bit_encode(&coder, c, 64);
+        }
+
+        {
+            struct bit_decoder coder;
+            bit_decoder_init(&coder, v, sizeof(v));
+            bit_decode_skip(&coder, i);
+
+            uint64_t r = bit_decode(&coder, 64);
+            if (r == c) continue;
+
+            printf("fail: i=%zu, r=%p, coder={ pos=%zu, sz=%zu }\n",
+                    i, (void *) r, coder.pos, coder.size);
+        }
+    }
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
 // endian test
 // -----------------------------------------------------------------------------
 
@@ -243,6 +276,7 @@ void make_suite(Suite *s)
     ilka_tc(s, basics_test);
     ilka_tc(s, complex_test);
     ilka_tc(s, skip_test);
+    ilka_tc(s, edge_test);
     ilka_tc(s, endian_test);
 
     ilka_tc_signal(s, bound_test_1, SIGABRT);
