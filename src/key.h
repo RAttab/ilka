@@ -68,9 +68,12 @@ void ilka_key_read_bytes(struct ilka_key_it *it, uint8_t *data, size_t data_n);
 
 
 // -----------------------------------------------------------------------------
-// private interface.
+// private interface
 // -----------------------------------------------------------------------------
 
 uint64_t ilka_key_peek(struct ilka_key_it it, size_t bits);
 uint64_t ilka_key_pop(struct ilka_key_it *it, size_t bits);
 void ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits);
+
+void ilka_key_print_it(struct ilka_key_it it);
+void ilka_key_print_chunk(struct ilka_key_chunk *chunk);

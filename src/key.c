@@ -177,9 +177,7 @@ ilka_key_peek(struct ilka_key_it it, size_t bits)
 
     if (avail < bits) {
         bit_decoder_init(&coder, it.chunk->next->bytes, ILKA_KEY_CHUNK_SIZE);
-
-        data <<= avail;
-        data |= bit_decode(&coder, bits - avail);
+        data |= bit_decode(&coder, bits - avail) << avail;
     }
 
     return data;
@@ -212,6 +210,8 @@ ilka_key_push(struct ilka_key_it *it, uint64_t data, size_t bits)
         bit_encoder_init(&coder, it->chunk, ILKA_KEY_CHUNK_SIZE);
         bit_encode(&coder, data >> avail, bits - avail);
     }
+
+    it->key->size = ceil_div(it->pos, 8);
 }
 
 
@@ -376,3 +376,27 @@ ilka_key_read_bytes(struct ilka_key_it *it, uint8_t *data, size_t data_n)
         avail = ILKA_KEY_CHUNK_SIZE;
     }
 }
+
+
+// -----------------------------------------------------------------------------
+// debug
+// -----------------------------------------------------------------------------
+
+void
+ilka_key_print_it(struct ilka_key_it it)
+{
+    printf("key_it={ pos=%zu/%zu, sz=%zu/%zu, chunk=%p, first=%p, last=%p }\n",
+            ceil_div(it.pos, 8), it.pos, it.key->size, it.key->size * 8,
+            (void *) it.chunk, (void *) &it.key->chunk, (void *) it.key->last);
+}
+
+void
+ilka_key_print_chunk(struct ilka_key_chunk *chunk)
+{
+    uint64_t *ptr = (uint64_t *) chunk->bytes;
+    printf("chunk={ next=%p, [ 0:%p, 1:%p, 2:%p, 3:%p, 4:%p, 5:%p, 6:%p ] }\n",
+            (void *) chunk->next,
+            (void *) ptr[0], (void *) ptr[1], (void *) ptr[2], (void *) ptr[3],
+            (void *) ptr[4], (void *) ptr[5], (void *) ptr[6]);
+}
+

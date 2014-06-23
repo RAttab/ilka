@@ -95,6 +95,7 @@ START_TEST(read_write_test)
 
     {
         struct ilka_key_it it = ilka_key_begin(&k);
+        ck_assert(!ilka_key_end(it));
 
         size_t leftover = sizeof(v_str)
             + sizeof(v_64) + sizeof(v_32) + sizeof(v_16) + sizeof(v_8);
@@ -126,6 +127,112 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// bits_test
+// -----------------------------------------------------------------------------
+
+
+/* printf("check_pop: value=%p, exp=%p, eq=%d\n", (void *) peek, (void *) (exp), peek == (exp)); \ */
+
+#define check_pop(it, bits, exp)                        \
+    do {                                                \
+        uint64_t peek = ilka_key_peek(it, bits);        \
+        ck_assert_int_eq(peek, exp);                    \
+                                                        \
+        uint64_t pop = ilka_key_pop(&it, bits);         \
+        ck_assert_int_eq(pop, exp);                     \
+    } while(0)
+
+START_TEST(bits_test)
+{
+    struct ilka_key k;
+    ilka_key_init(&k);
+
+    const uint64_t c = 0xFEDCBA0987654321;
+    const size_t chunks = (ILKA_KEY_CHUNK_SIZE + 1) * 2;
+
+    size_t bits = 0;
+
+    {
+        struct ilka_key_it it = ilka_key_begin(&k);
+
+        ilka_key_push(&it, 0x5, 3);
+        bits += 3;
+
+        for (size_t i = 0; i < 64; ++i) {
+            ilka_key_push(&it, c, i);
+            bits += i;
+        }
+
+        ilka_key_push(&it, 0x15, 5);
+        bits += 5;
+
+        for (size_t i = 0; i < chunks; ++i) {
+            ilka_key_push(&it, i % 2 ? c : 0UL, 64);
+            bits += 64;
+        }
+
+        ck_assert(ilka_key_end(it));
+        check_leftover(it, 0);
+    }
+
+    {
+        struct ilka_key_it it = ilka_key_begin(&k);
+
+        check_pop(it, 3, 0x5);
+        check_leftover(it, bits -= 3);
+
+        for (size_t i = 0; i < 64; ++i) {
+            check_pop(it, i, c & ((1UL << i) - 1));
+            check_leftover(it, bits -= i);
+        }
+
+        check_pop(it, 5, 0x15);
+        check_leftover(it, bits -= 5);
+
+        for (size_t i = 0; i < chunks; ++i) {
+            check_pop(it, 64, i % 2 ? c : 0UL);
+            check_leftover(it, bits -= 64);
+        }
+
+        ck_assert(ilka_key_end(it));
+    }
+
+    ilka_key_free(&k);
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// cmp_test
+// -----------------------------------------------------------------------------
+
+START_TEST(cmp_test)
+{
+    struct ilka_key k;
+    ilka_key_init(&k);
+
+
+    ilka_key_free(&k);
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// endian_test
+// -----------------------------------------------------------------------------
+
+START_TEST(endian_test)
+{
+    struct ilka_key k;
+    ilka_key_init(&k);
+
+
+    ilka_key_free(&k);
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
 
@@ -133,6 +240,9 @@ void make_suite(Suite *s)
 {
     ilka_tc(s, empty_test);
     ilka_tc(s, read_write_test);
+    ilka_tc(s, bits_test);
+    ilka_tc(s, cmp_test);
+    ilka_tc(s, endian_test);
 }
 
 int main(void)
