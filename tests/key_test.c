@@ -148,7 +148,7 @@ START_TEST(bits_test)
     ilka_key_init(&k);
 
 
-    const uint64_t c = 0xFEDCBA0987654321;
+    const uint64_t c = 0xFEDCBA0987654321UL;
     const size_t chunks = (ILKA_KEY_CHUNK_SIZE + 1) * 2;
 
     size_t bits = 0;
@@ -287,6 +287,20 @@ START_TEST(endian_test)
     struct ilka_key k;
     ilka_key_init(&k);
 
+    const uint64_t c = 0x0123456789ABCDEFUL;
+
+    {
+        struct ilka_key_it it = ilka_key_begin(&k);
+        ilka_key_write_64(&it, c);
+    }
+
+    {
+        struct ilka_key_it it = ilka_key_begin(&k);
+        for (size_t i = 0; i < 8; ++i) {
+            size_t j = 64 - ((i + 1) * 8);
+            check_pop(it, 8, (c >> j) & 0xFF);
+        }
+    }
 
     ilka_key_free(&k);
 }
