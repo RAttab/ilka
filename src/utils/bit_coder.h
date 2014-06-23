@@ -82,7 +82,8 @@ bit_decode(struct bit_decoder *coder, size_t bits)
         bit_decode_skip(coder, bits - avail);
     }
 
-    return value & ((1UL << bits) - 1);
+    uint64_t mask = bits >= 64 ? -1UL : ((1UL << bits) - 1);
+    return value & mask;
 }
 
 inline uint64_t
@@ -158,7 +159,7 @@ bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
 {
     bit_encoder_check(coder, bits);
 
-    uint64_t mask = (1UL << bits) - 1;
+    uint64_t mask = bits >= 64 ? -1UL : ((1UL << bits) - 1);
     value &= mask;
 
     uint64_t *p = (uint64_t *) coder->data;
