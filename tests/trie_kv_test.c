@@ -8,15 +8,78 @@
 #include "check.h"
 #include "trie/kv.h"
 
+
 // -----------------------------------------------------------------------------
-// basics_test
+// utils
 // -----------------------------------------------------------------------------
+
+struct trie_kv
+make_kv(uint64_t k, uint64_t v)
+{
+    return (struct trie_kv) { k, v, trie_kvs_state_terminal };
+}
+
 
 #define check_count(info, exp)                  \
     do {                                        \
         size_t r = trie_kvs_count(info);        \
         ck_assert_int_eq(r, exp);               \
     } while(0)
+
+
+// -----------------------------------------------------------------------------
+// kvs_test
+// -----------------------------------------------------------------------------
+
+START_TEST(kvs_test)
+{
+    struct trie_kv kvs[128];
+    memset(kvs, 0, sizeof(kvs));
+
+    {
+        for (size_t i = 32; i < 64; ++i)
+            trie_kvs_add(kvs, 128, make_kv(i, i));
+
+        for (size_t i = 0; i < 32; ++i)
+            ck_assert_int_eq(kvs[i].key, i + 32);
+    }
+
+    {
+        for (size_t i = 0; i < 32; ++i)
+            trie_kvs_add(kvs, 128, make_kv(i, i));
+
+        for (size_t i = 0; i < 64; ++i)
+            ck_assert_int_eq(kvs[i].key, i);
+    }
+
+    {
+        for (size_t i = 64; i < 128; i += 2)
+            trie_kvs_add(kvs, 128, make_kv(i, i));
+        for (size_t i = 64 + 1; i < 128; i += 2)
+            trie_kvs_add(kvs, 128, make_kv(i, i));
+
+        for (size_t i = 0; i < 128; ++i) {
+            ck_assert_int_eq(kvs[i].key, i);
+            ck_assert_int_eq(kvs[i].val, i);
+        }
+    }
+
+    {
+        for (size_t i = 0; i < 128; ++i)
+            trie_kvs_set(kvs, 128, make_kv(i, i * 2));
+
+        for (size_t i = 0; i < 128; ++i) {
+            ck_assert_int_eq(kvs[i].key, i);
+            ck_assert_int_eq(kvs[i].val, i * 2);
+        }
+    }
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// basics_test
+// -----------------------------------------------------------------------------
 
 START_TEST(basics_test)
 {
@@ -54,6 +117,7 @@ END_TEST
 
 void make_suite(Suite *s)
 {
+    ilka_tc(s, kvs_test);
     ilka_tc(s, basics_test);
 }
 
