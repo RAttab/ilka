@@ -236,12 +236,14 @@ calc_padding(struct trie_kvs_info *info)
 static void
 calc_buckets(struct trie_kvs_info *info)
 {
-    size_t leftover = ILKA_CACHE_LINE - STATIC_HEADER_SIZE;
+    size_t leftover = (ILKA_CACHE_LINE - STATIC_HEADER_SIZE) * 8;
+    leftover -= info->value_bits;
     leftover -= info->key.prefix_bits;
     leftover -= info->val.prefix_bits;
 
     size_t abs_buckets = 1ULL << info->key.bits;
-    size_t abs_avail = (leftover - abs_buckets * 2) / info->val.bits;
+    size_t abs_bucket_bits = info->val.bits ? info->val.bits : 1;
+    size_t abs_avail = (leftover - abs_buckets * 2) / abs_bucket_bits;
     if (abs_avail >= abs_buckets) {
         info->buckets = abs_buckets;
         info->is_abs_buckets = 1;
