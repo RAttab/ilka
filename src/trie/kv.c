@@ -9,8 +9,8 @@ Static layout:
 
    byte  bit  len  field                   f(x)
 
-      0    0    4  flags                   is_abs_buckets
-           4    4  key.len                 x << 2
+      0    0    2  flags                   is_abs_buckets
+           2    6  key_len                 x << 1
       1    0    4  key.bits                x << 2
            4    4  key.shift               x << 2
       2    0    4  key.prefix_bits         x << 3
@@ -370,12 +370,11 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
     struct bit_decoder coder;
     bit_decoder_init(&coder, data, info->size);
 
-    info->is_abs_buckets = bit_decode(&coder, 4);
-    info->key_len = bit_decode(&coder, 4) << 2;
+    info->is_abs_buckets = bit_decode(&coder, 2);
+    info->key_len = bit_decode(&coder, 6) << 1;
 
     decode_info(&coder, &info->key);
     decode_info(&coder, &info->val);
-
     calc_padding(info);
 
     info->buckets = bit_decode(&coder, 8);
@@ -514,8 +513,8 @@ trie_kvs_encode(
 
     memset(data, 0, info->size);
 
-    bit_encode(&coder, info->is_abs_buckets, 4);
-    bit_encode(&coder, info->key_len >> 2, 4);
+    bit_encode(&coder, info->is_abs_buckets, 2);
+    bit_encode(&coder, info->key_len >> 1, 6);
 
     encode_info(&coder, &info->key);
     encode_info(&coder, &info->val);
@@ -528,14 +527,14 @@ trie_kvs_encode(
         set_bucket_state(info, bucket, kvs[i].state);
     }
 
-    info->state_offset = bit_encoder_offset(&coder);
-    encode_states(&coder, info);
-
     info->value_offset = bit_encoder_offset(&coder);
     encode_value(&coder, info->value, info->value_bits, info->value_shift);
 
     encode_prefix(&coder, &info->key);
     encode_prefix(&coder, &info->val);
+
+    info->state_offset = bit_encoder_offset(&coder);
+    encode_states(&coder, info);
 
     info->bucket_offset = bit_encoder_offset(&coder);
 
@@ -870,10 +869,10 @@ trie_kvs_burst(
 void
 print_encode(struct trie_kvs_encode_info *encode)
 {
-    printf("{ bits=%d, shift=%d, prefix_bits=%d, prefix_shift=%d, prefix=%p }\n",
+    printf("{ bits=%d, shift=%d, prefix_bits=%d, prefix_shift=%d, prefix=%p, pad=%d }\n",
             (int) encode->bits, (int) encode->shift,
             (int) encode->prefix_bits, (int) encode->prefix_shift,
-            (void*) encode->prefix);
+            (void*) encode->prefix, (int) encode->padding);
 }
 
 void
