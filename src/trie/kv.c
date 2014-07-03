@@ -76,6 +76,7 @@ Todo:
 #include "utils/bit_coder.h"
 
 #include <string.h>
+#include <stdio.h>
 
 // -----------------------------------------------------------------------------
 // constants
@@ -857,4 +858,40 @@ trie_kvs_burst(
             .state = kvs[i].state
         };
     }
+}
+
+
+// -----------------------------------------------------------------------------
+// print
+// -----------------------------------------------------------------------------
+
+void
+print_encode(struct trie_kvs_encode_info *encode)
+{
+    printf("{ bits=%d, shift=%d, prefix_bits=%d, prefix_shift=%d, prefix=%p }\n",
+            (int) encode->bits, (int) encode->shift,
+            (int) encode->prefix_bits, (int) encode->prefix_shift,
+            (void*) encode->prefix);
+}
+
+void
+trie_kvs_print_info(struct trie_kvs_info *info)
+{
+    printf("{\n"
+            "\tsize=%d\n"
+            "\tkey_len=%d\n"
+            "\tbuckets=%d\n"
+            "\tis_abs_buckets=%d\n"
+            "\toffsets={ val=%d, state=%d, bucket=%d }\n"
+            "\tstate=[ %p, %p ]\n"
+            "\tvalue={ bits=%d, shift=%d, value=%p }\n",
+            (int) info->size, (int) info->key_len,
+            (int) info->buckets, (int) info->is_abs_buckets,
+            (int) info->value_offset, (int) info->state_offset, (int) info->bucket_offset,
+            (void*) info->state[0], (void*) info->state[1],
+            (int) info->value_bits, (int) info->value_shift, (void*) info->value);
+
+    printf("\tkey="); print_encode(&info->key);
+    printf("\tval="); print_encode(&info->val);
+    printf("}\n");
 }

@@ -99,6 +99,8 @@ void trie_kvs_set_value_inplace(struct trie_kvs_info *info, uint64_t value, void
 
 void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data);
 
+void trie_kvs_print_info(struct trie_kvs_info *info);
+
 
 // -----------------------------------------------------------------------------
 // kvs burst
