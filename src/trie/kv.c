@@ -313,10 +313,11 @@ decode_value(
 static void
 decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
 {
-    size_t bits = ceil_div(info->buckets * 2, 4);
-
+    size_t bits = info->buckets * 2;
     size_t b0 = info->buckets <= 32 ? bits : 64;
     size_t b1 = info->buckets <= 32 ?    0 : bits - 64;
+
+    bit_decode_align(coder, b0);
 
     /* atomic acquire: states must be fully read before we read any buckets. */
     info->state[0] = bit_decode_atomic(coder, b0, memory_order_acquire);
@@ -377,6 +378,7 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
 
     info->value_offset = bit_decoder_offset(&coder);
 
+    bit_decode_align(&coder, info->value_bits);
     decode_value(&coder, &info->value, info->value_bits, info->value_shift);
     decode_value(&coder, &info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
     decode_value(&coder, &info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
@@ -413,7 +415,9 @@ encode_value(
 static void
 encode_states(struct bit_encoder *coder, struct trie_kvs_info *info)
 {
-    size_t bits = ceil_div(info->buckets * 2, 4);
+    size_t bits = info->buckets * 2;
+    bit_encode_align(coder, bits >= 64 ? 64 : bits);
+
     bit_encode(coder, info->state[0], info->buckets <= 32 ? bits : 64);
     bit_encode(coder, info->state[1], info->buckets <= 32 ?    0 : bits - 64);
 }
@@ -436,9 +440,9 @@ encode_state(
 static int
 can_encode(const struct trie_kvs_encode_info *encode, uint64_t value)
 {
-    if (value & ((1 << encode->shift) - 1)) return 0;
+    if (value & ((1UL << encode->shift) - 1)) return 0;
 
-    uint64_t prefix = value & ~((1 << (encode->shift + encode->bits)) - 1);
+    uint64_t prefix = value & ~((1UL << (encode->shift + encode->bits)) - 1);
     if (prefix ^ encode->prefix) return 0;
 
     return 1;
@@ -521,6 +525,7 @@ trie_kvs_encode(
 
     info->value_offset = bit_encoder_offset(&coder);
 
+    bit_encode_align(&coder, info->value_bits);
     encode_value(&coder, info->value, info->value_bits, info->value_shift);
     encode_value(&coder, info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
     encode_value(&coder, info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
@@ -768,7 +773,7 @@ int
 trie_kvs_can_set_value_inplace(struct trie_kvs_info *info, uint64_t value)
 {
     if (!info->value_bits) return 0;
-    if (value & ((1 << info->value_shift) - 1)) return 0;
+    if (value & ((1UL << info->value_shift) - 1)) return 0;
 
     uint8_t bits = 64 - clz(value >> info->value_shift);
     return bits <= info->value_bits;
