@@ -86,6 +86,13 @@ bit_decode(struct bit_decoder *coder, size_t bits)
     return value & mask;
 }
 
+inline void
+bit_decode_align(struct bit_decoder *coder, size_t bits)
+{
+    if (bits + coder->pos >= 64) return;
+    bit_decode_skip(coder, 8 - coder->pos);
+}
+
 inline uint64_t
 bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_order order)
 {
@@ -95,7 +102,7 @@ bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_order orde
             bits + coder->pos);
 
     uint64_t value = ilka_atomic_load((uint64_t*) coder->data, order);
-    value = (value >> coder->pos) & ((1 << bits) - 1);
+    value = (value >> coder->pos) & ((1UL << bits) - 1);
 
     bit_decode_skip(coder, bits);
     return value;
@@ -176,6 +183,12 @@ bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
     }
 }
 
+inline void
+bit_encode_align(struct bit_encoder *coder, size_t bits)
+{
+    if (bits + coder->pos >= 64) return;
+    bit_encode_skip(coder, 8 - coder->pos);
+}
 
 inline void
 bit_encode_atomic(
