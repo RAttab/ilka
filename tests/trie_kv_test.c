@@ -190,7 +190,7 @@ check_encode_decode(
 
     check_info(&info, &decoded_info);
 
-    ck_assert_int_eq(trie_kvs_count(&decoded_info), kvs_n);
+    ck_assert_int_eq(trie_kvs_count(&decoded_info), has_value + kvs_n);
 
     if (!has_value) ck_assert(!decoded_info.value_bits);
     else {
@@ -215,8 +215,8 @@ START_TEST(encode_decode_test)
     {
         struct trie_kv kvs[] = {
             { 0xF10, 0xA10, trie_kvs_state_terminal },
-            { 0xF20, 0xA20, trie_kvs_state_tombstone },
-            { 0xF30, 0xA30, trie_kvs_state_branch },
+            { 0xF20, 0xA20, trie_kvs_state_branch },
+            { 0xF30, 0xA30, trie_kvs_state_terminal },
         };
 
         printf("\n\n[ val ]==============================================\n\n");
