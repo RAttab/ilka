@@ -87,10 +87,9 @@ bit_decode(struct bit_decoder *coder, size_t bits)
 }
 
 inline void
-bit_decode_align(struct bit_decoder *coder, size_t bits)
+bit_decode_align(struct bit_decoder *coder)
 {
-    if (bits + coder->pos >= 64) return;
-    bit_decode_skip(coder, 8 - coder->pos);
+    if (coder->pos) bit_decode_skip(coder, 8 - coder->pos);
 }
 
 inline uint64_t
@@ -184,10 +183,9 @@ bit_encode(struct bit_encoder *coder, uint64_t value, size_t bits)
 }
 
 inline void
-bit_encode_align(struct bit_encoder *coder, size_t bits)
+bit_encode_align(struct bit_encoder *coder)
 {
-    if (bits + coder->pos >= 64) return;
-    bit_encode_skip(coder, 8 - coder->pos);
+    if (coder->pos) bit_encode_skip(coder, 8 - coder->pos);
 }
 
 inline void

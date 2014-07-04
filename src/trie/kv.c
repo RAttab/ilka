@@ -314,11 +314,11 @@ decode_value(
 static void
 decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
 {
+    bit_decode_align(coder);
+
     size_t bits = info->buckets * 2;
     size_t b0 = info->buckets <= 32 ? bits : 64;
     size_t b1 = info->buckets <= 32 ?    0 : bits - 64;
-
-    bit_decode_align(coder, b0);
 
     /* atomic acquire: states must be fully read before we read any buckets. */
     info->state[0] = bit_decode_atomic(coder, b0, memory_order_acquire);
@@ -379,7 +379,7 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
 
     info->value_offset = bit_decoder_offset(&coder);
 
-    bit_decode_align(&coder, info->value_bits);
+    bit_decode_align(&coder);
     decode_value(&coder, &info->value, info->value_bits, info->value_shift);
     decode_value(&coder, &info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
     decode_value(&coder, &info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
@@ -416,9 +416,9 @@ encode_value(
 static void
 encode_states(struct bit_encoder *coder, struct trie_kvs_info *info)
 {
-    size_t bits = info->buckets * 2;
-    bit_encode_align(coder, bits >= 64 ? 64 : bits);
+    bit_encode_align(coder);
 
+    size_t bits = info->buckets * 2;
     bit_encode(coder, info->state[0], info->buckets <= 32 ? bits : 64);
     bit_encode(coder, info->state[1], info->buckets <= 32 ?    0 : bits - 64);
 }
@@ -526,7 +526,7 @@ trie_kvs_encode(
 
     info->value_offset = bit_encoder_offset(&coder);
 
-    bit_encode_align(&coder, info->value_bits);
+    bit_encode_align(&coder);
     encode_value(&coder, info->value, info->value_bits, info->value_shift);
     encode_value(&coder, info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
     encode_value(&coder, info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
