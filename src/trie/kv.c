@@ -143,6 +143,7 @@ next_bucket(const struct trie_kvs_info *info, size_t bucket)
     while (bucket < info->buckets) {
         bucket = next_bucket_impl(info, bucket);
         if (get_bucket_state(info, bucket) != trie_kvs_state_tombstone) break;
+        bucket++;
     }
 
     return bucket;
