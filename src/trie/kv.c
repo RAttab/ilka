@@ -11,16 +11,16 @@ Static layout:
 
       0    0    2  flags                   is_abs_buckets
            2    6  key_len                 x << 1
-      1    0    4  key.bits                x << 2
-           4    4  key.shift               x << 2
-      2    0    4  key.prefix_bits         x << 3
-           4    4  key.prefix_shift        x << 2
-      3    0    4  val.bits                x << 2
-           4    4  val.shift               x << 2
-      4    0    4  val.prefix_bits         x << 3
-           4    4  val.prefix_shift        x << 2
-      5    0    4  value_bits              x << 2
+      1    0    4  value_bits              x << 2
            4    4  value_shift             x << 2
+      2    0    4  key.bits                x << 2
+           4    4  key.shift               x << 2
+      3    0    4  key.prefix_bits         x << 3
+           4    4  key.prefix_shift        x << 2
+      4    0    4  val.bits                x << 2
+           4    4  val.shift               x << 2
+      5    0    4  val.prefix_bits         x << 3
+           4    4  val.prefix_shift        x << 2
       6    0    8  buckets
 
 Dynamic layout:
@@ -311,13 +311,6 @@ decode_value(
 }
 
 static void
-decode_prefix(struct bit_decoder *coder, struct trie_kvs_encode_info *encode)
-{
-    uint8_t shift = encode->prefix_shift + encode->bits;
-    decode_value(coder, &encode->prefix, encode->prefix_bits, shift);
-}
-
-static void
 decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
 {
     size_t bits = ceil_div(info->buckets * 2, 4);
@@ -373,6 +366,9 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
     info->is_abs_buckets = bit_decode(&coder, 2);
     info->key_len = bit_decode(&coder, 6) << 1;
 
+    info->value_bits = bit_decode(&coder, 4) << 2;
+    info->value_shift = bit_decode(&coder, 4) << 2;
+
     decode_info(&coder, &info->key);
     decode_info(&coder, &info->val);
     calc_padding(info);
@@ -380,10 +376,10 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
     info->buckets = bit_decode(&coder, 8);
 
     info->value_offset = bit_decoder_offset(&coder);
-    decode_value(&coder, &info->value, info->value_bits, info->value_shift);
 
-    decode_prefix(&coder, &info->key);
-    decode_prefix(&coder, &info->val);
+    decode_value(&coder, &info->value, info->value_bits, info->value_shift);
+    decode_value(&coder, &info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
+    decode_value(&coder, &info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
 
     info->state_offset = bit_decoder_offset(&coder);
     decode_states(&coder, info);
@@ -412,13 +408,6 @@ encode_value(
 {
     if (!bits) return;
     bit_encode(coder, value >> shift, bits);
-}
-
-static void
-encode_prefix(struct bit_encoder *coder, struct trie_kvs_encode_info *encode)
-{
-    size_t shift = encode->prefix_shift + encode->bits;
-    encode_value(coder, encode->prefix, encode->prefix_bits, shift);
 }
 
 static void
@@ -516,6 +505,9 @@ trie_kvs_encode(
     bit_encode(&coder, info->is_abs_buckets, 2);
     bit_encode(&coder, info->key_len >> 1, 6);
 
+    bit_encode(&coder, info->value_bits >> 2, 4);
+    bit_encode(&coder, info->value_shift >> 2, 4);
+
     encode_info(&coder, &info->key);
     encode_info(&coder, &info->val);
 
@@ -528,10 +520,10 @@ trie_kvs_encode(
     }
 
     info->value_offset = bit_encoder_offset(&coder);
-    encode_value(&coder, info->value, info->value_bits, info->value_shift);
 
-    encode_prefix(&coder, &info->key);
-    encode_prefix(&coder, &info->val);
+    encode_value(&coder, info->value, info->value_bits, info->value_shift);
+    encode_value(&coder, info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
+    encode_value(&coder, info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
 
     info->state_offset = bit_encoder_offset(&coder);
     encode_states(&coder, info);
