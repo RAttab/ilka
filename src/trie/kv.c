@@ -378,8 +378,6 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
     info->buckets = bit_decode(&coder, 8);
 
     info->value_offset = bit_decoder_offset(&coder);
-
-    bit_decode_align(&coder);
     decode_value(&coder, &info->value, info->value_bits, info->value_shift);
     decode_value(&coder, &info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
     decode_value(&coder, &info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
@@ -504,7 +502,6 @@ trie_kvs_encode(
 {
     struct bit_encoder coder;
     bit_encoder_init(&coder, data, info->size);
-
     memset(data, 0, info->size);
 
     bit_encode(&coder, info->is_abs_buckets, 2);
@@ -518,24 +515,22 @@ trie_kvs_encode(
 
     bit_encode(&coder, info->buckets, 8);
 
+    info->value_offset = bit_encoder_offset(&coder);
+    encode_value(&coder, info->value, info->value_bits, info->value_shift);
+    encode_value(&coder, info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
+    encode_value(&coder, info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
+
+
     info->state[0] = info->state[1] = 0;
     for (size_t i = 0; i < kvs_n; ++i) {
         size_t bucket = !info->is_abs_buckets ? i : key_to_bucket(info, kvs[i].key);
         set_bucket_state(info, bucket, kvs[i].state);
     }
-
-    info->value_offset = bit_encoder_offset(&coder);
-
-    bit_encode_align(&coder);
-    encode_value(&coder, info->value, info->value_bits, info->value_shift);
-    encode_value(&coder, info->key.prefix, info->key.prefix_bits, info->key.prefix_shift);
-    encode_value(&coder, info->val.prefix, info->val.prefix_bits, info->val.prefix_shift);
-
     info->state_offset = bit_encoder_offset(&coder);
     encode_states(&coder, info);
 
-    info->bucket_offset = bit_encoder_offset(&coder);
 
+    info->bucket_offset = bit_encoder_offset(&coder);
     for (size_t i = 0; i < kvs_n; ++i) {
         size_t bucket = !info->is_abs_buckets ? i : key_to_bucket(info, kvs[i].key);
         encode_bucket(info, bucket, kvs[i], data);
