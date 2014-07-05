@@ -9,9 +9,10 @@ Static layout:
 
    byte  bit  len  field                   f(x)
 
-      0    0    2  flags                   is_abs_buckets
+      0    0    1  has_value
+           1    1  is_abs_buckets
            2    6  key_len                 x << 1
-      1    0    4  value_bits              x << 2
+      1    0    4  value_bits              (x << 2) + 1
            4    4  value_shift             x << 2
       2    0    4  key.bits                (x << 2) + 1
            4    4  key.shift               x << 2
@@ -48,9 +49,13 @@ Compression Fn:
 
 Notes:
 
-   - val_bits can be 0. If key_bits is 8 then this could allow us to have 256
-     buckets. This is a bit extreme and is unlikely to really happen so we cap
-     the number of buckets at 64.
+   - All bits field would naturally have a range of 0-64 which requires 5 bits
+     to encode after shifting. To get around that issue we either extreme value
+     of that range so that everything fits in 4 bits.
+
+     value_bits: We split off the fifth bit into the has_value flag.
+     key_bits and val_bits: can't be 0 so we substract one before encoding.
+     prefix_bits: can't be 64 because key_bits and val_bits can't be 0.
 
    - since there are currently 3 states that are mutally exclusive so we encode
      them with 2 bits for each buckets.
@@ -285,9 +290,11 @@ trie_kvs_info(
     info->size = ILKA_CACHE_LINE;
 
     if (has_value) {
+        info->has_value = 1;
         info->value = value;
         calc_value(info->value, &info->value_bits, &info->value_shift);
     }
+
     calc_bits(info, kvs, kvs_n);
     calc_padding(info);
     calc_buckets(info);
@@ -376,11 +383,15 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
     struct bit_decoder coder;
     bit_decoder_init(&coder, data, info->size);
 
-    info->is_abs_buckets = bit_decode(&coder, 2);
+    info->has_value = bit_decode(&coder, 1);
+    info->is_abs_buckets = bit_decode(&coder, 1);
     info->key_len = bit_decode(&coder, 6) << 1;
 
-    info->value_bits = bit_decode(&coder, 4) << 2;
-    info->value_shift = bit_decode(&coder, 4) << 2;
+    if (info->has_value) {
+        info->value_bits = (bit_decode(&coder, 4) + 1) << 2;
+        info->value_shift = bit_decode(&coder, 4) << 2;
+    }
+    else bit_decode_skip(&coder, 8);
 
     decode_info(&coder, &info->key);
     decode_info(&coder, &info->val);
@@ -521,11 +532,15 @@ trie_kvs_encode(
     bit_encoder_init(&coder, data, info->size);
     memset(data, 0, info->size);
 
-    bit_encode(&coder, info->is_abs_buckets, 2);
+    bit_encode(&coder, info->has_value, 1);
+    bit_encode(&coder, info->is_abs_buckets, 1);
     bit_encode(&coder, info->key_len >> 1, 6);
 
-    bit_encode(&coder, info->value_bits >> 2, 4);
-    bit_encode(&coder, info->value_shift >> 2, 4);
+    if (info->has_value) {
+        bit_encode(&coder, (info->value_bits >> 2) - 1, 4);
+        bit_encode(&coder, info->value_shift >> 2, 4);
+    }
+    else bit_encode_skip(&coder, 8);
 
     encode_info(&coder, &info->key);
     encode_info(&coder, &info->val);
@@ -571,7 +586,7 @@ count_buckets(uint64_t s)
 size_t
 trie_kvs_count(struct trie_kvs_info *info)
 {
-    return !!info->value_bits
+    return info->has_value
         + count_buckets(info->state[0])
         + count_buckets(info->state[1]);
 }
@@ -583,7 +598,7 @@ find_bucket(struct trie_kvs_info *info, uint64_t key, const void *data)
 
     for (size_t bucket = next_bucket(info, 0);
          bucket < info->buckets;
-         bucket = next_bucket(info, 0))
+         bucket = next_bucket(info, bucket + 1))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key == key) return bucket;
@@ -602,7 +617,7 @@ trie_kvs_get(struct trie_kvs_info *info, uint64_t key, const void *data)
 
     for (size_t bucket = next_bucket(info, 0);
          bucket < info->buckets;
-         bucket = next_bucket(info, 0))
+         bucket = next_bucket(info, bucket + 1))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key == key) return kv;
@@ -620,7 +635,7 @@ trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data)
 
     for (size_t bucket = next_bucket(info, 0);
          bucket < info->buckets;
-         bucket = next_bucket(info, 0))
+         bucket = next_bucket(info, bucket + 1))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key > key) continue;
@@ -646,7 +661,7 @@ trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data)
 
     for (size_t bucket = next_bucket(info, 0);
          bucket < info->buckets;
-         bucket = next_bucket(info, 0))
+         bucket = next_bucket(info, bucket + 1))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data);
         if (kv.key > key) continue;
@@ -786,7 +801,7 @@ trie_kvs_set_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
 int
 trie_kvs_can_set_value_inplace(struct trie_kvs_info *info, uint64_t value)
 {
-    if (!info->value_bits) return 0;
+    if (!info->has_value) return 0;
     if (value & ((1UL << info->value_shift) - 1)) return 0;
 
     uint8_t bits = 64 - clz(value >> info->value_shift);
@@ -876,6 +891,18 @@ trie_kvs_burst(
 // -----------------------------------------------------------------------------
 // print
 // -----------------------------------------------------------------------------
+
+void
+trie_kvs_print_kv(struct trie_kv kv)
+{
+    char state =
+        kv.state == trie_kvs_state_empty ? 'e' :
+        kv.state == trie_kvs_state_branch ? 'b' :
+        kv.state == trie_kvs_state_terminal ? 'v' : 't';
+
+    printf("{ key=%p, val=%p, state=%c }",
+            (void*) kv.key, (void*) kv.val, state);
+}
 
 void
 print_encode(struct trie_kvs_encode_info *encode)

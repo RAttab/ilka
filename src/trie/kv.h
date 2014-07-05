@@ -48,6 +48,7 @@ struct trie_kvs_info
     uint8_t buckets;
     uint8_t is_abs_buckets;
 
+    uint8_t has_value;
     uint8_t value_bits;
     uint8_t value_shift;
 
@@ -99,6 +100,7 @@ void trie_kvs_set_value_inplace(struct trie_kvs_info *info, uint64_t value, void
 
 void trie_kvs_remove(struct trie_kvs_info *info, uint64_t key, void *data);
 
+void trie_kvs_print_kv(struct trie_kv kv);
 void trie_kvs_print_info(struct trie_kvs_info *info);
 
 

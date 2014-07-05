@@ -25,7 +25,7 @@ trie_node_get(
         trie_kvs_decode(&info, p_node);
 
         if (ilka_key_end(key_it)) {
-            if (!info.value_bits) return 0;
+            if (!info.has_value) return 0;
             *value = info.value;
             return 1;
         }
@@ -81,7 +81,7 @@ trie_node_lb(
         struct trie_kvs_info info;
         trie_kvs_decode(&info, p_node);
 
-        if (info.value_bits && ilka_key_end(key_it)) {
+        if (info.has_value && ilka_key_end(key_it)) {
             *value = info.value;
             return 1;
         }
@@ -125,7 +125,7 @@ trie_node_ub(
         struct trie_kv kv = trie_kvs_lb(&info, key_ub, p_node);
 
         if (kv.state == trie_kvs_state_empty) {
-            if (info.value_bits && ilka_key_end(key_it)) {
+            if (info.has_value && ilka_key_end(key_it)) {
                 *value = info.value;
                 return 1;
             }
@@ -214,7 +214,7 @@ trie_node_next(
             p_node = ilka_region_read(r, node);
             trie_kvs_decode(&info, p_node);
 
-            if (info.value_bits && ilka_key_end(key_it)) {
+            if (info.has_value && ilka_key_end(key_it)) {
                 *value = info.value;
                 return 1;
             }
@@ -289,7 +289,7 @@ trie_node_prev(
             p_node = ilka_region_read(r, node);
             trie_kvs_decode(&info, p_node);
 
-            if (info.value_bits && ilka_key_end(key_it)) {
+            if (info.has_value && ilka_key_end(key_it)) {
                 *value = info.value;
                 return 1;
             }
@@ -481,7 +481,7 @@ add_to_node(
     trie_kvs_extract(info, kvs, kvs_n, p_node);
 
     return add_burst(
-            r, info->key_len, info->value_bits, info->value,
+            r, info->key_len, info->has_value, info->value,
             kvs, kvs_n, key_it, value);
 }
 
@@ -538,7 +538,7 @@ add_to_child(
     trie_kvs_set(kvs, info->buckets, child);
 
     return write_node(
-            r, info->key_len, info->value_bits, info->value, kvs, info->buckets);
+            r, info->key_len, info->has_value, info->value, kvs, info->buckets);
 }
 
 int

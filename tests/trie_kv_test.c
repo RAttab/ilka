@@ -175,6 +175,7 @@ check_encode_decode(
 
     {
         int r = trie_kvs_info(&info, key_len, has_value, value, kvs, kvs_n);
+        printf("info="); trie_kvs_print_info(&info); printf("\n");
         ck_assert(r);
 
         trie_kvs_encode(&info, kvs, kvs_n, data);
@@ -204,6 +205,7 @@ check_encode_decode(
 
     for (size_t i = 0; i < kvs_n; ++i) {
         struct trie_kv kv = trie_kvs_get(&decoded_info, kvs[i].key, data);
+        ck_assert(kv.state != trie_kvs_state_empty);
 
         check_kv(kv, kvs[i]);
         check_kv(decoded_kvs[i], kvs[i]);
@@ -213,17 +215,32 @@ check_encode_decode(
 START_TEST(encode_decode_test)
 {
     {
+        ilka_print_title("basics");
+
         struct trie_kv kvs[] = {
             { 0xF10, 0xA10, trie_kvs_state_terminal },
             { 0xF20, 0xA20, trie_kvs_state_branch },
             { 0xF30, 0xA30, trie_kvs_state_terminal },
         };
 
-        printf("\n\n[ val ]==============================================\n\n");
-        check_encode_decode(64, 1, 0x40, kvs, 3);
-
-        printf("\n\n[ no_val ]===========================================\n\n");
         check_encode_decode(64, 0, 0, kvs, 3);
+        check_encode_decode(64, 1, 0x40, kvs, 3);
+    }
+
+    {
+        ilka_print_title("max-bits");
+        const size_t n = 3;
+
+        struct trie_kv kvs[n];
+        for (size_t i = 0; i < n; ++i) {
+            kvs[i].key = kvs[i].val = (i << 62) + 1;
+            kvs[i].state = trie_kvs_state_terminal;
+
+            printf("kvs[%zu] = %p\n", i, (void*) kvs[i].key);
+        }
+
+        check_encode_decode(64, 0, 0, kvs, n);
+        check_encode_decode(64, 1, (1UL << 63) + 1, kvs, n);
     }
 }
 END_TEST
