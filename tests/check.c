@@ -8,6 +8,7 @@
 #include "check.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 
 // -----------------------------------------------------------------------------
@@ -34,5 +35,17 @@ int ilka_tests(const char *name, ilka_make_suite_t make_suite)
 
     srunner_run_all(runner, CK_NORMAL);
     return srunner_ntests_failed(runner);
+}
+
+
+void ilka_print_title(const char *title)
+{
+    char buf[81];
+    int n = snprintf(buf, 81, "[ %s ]", title);
+
+    memset(buf + n, '=', 80 - n);
+    buf[80] = '\0';
+
+    printf("\n%s\n", buf);
 }
 

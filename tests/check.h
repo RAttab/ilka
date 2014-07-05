@@ -45,3 +45,6 @@ int ilka_tests(const char *name, ilka_make_suite_t make_suite);
     ilka_tc_pre(s, n);                                  \
     tcase_add_loop_test(tc, n, exp, start, end);        \
     ilka_tc_post(s, n)
+
+
+void ilka_print_title(const char *title);
