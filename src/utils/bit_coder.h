@@ -101,7 +101,8 @@ bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_order orde
             bits + coder->pos);
 
     uint64_t value = ilka_atomic_load((uint64_t*) coder->data, order);
-    value = (value >> coder->pos) & ((1UL << bits) - 1);
+    uint64_t mask = bits < 64 ? (1UL << bits) - 1 : -1UL;
+    value = (value >> coder->pos) & mask;
 
     bit_decode_skip(coder, bits);
     return value;
@@ -199,7 +200,7 @@ bit_encode_atomic(
             "misaligned atomic bit encoding <%zu>",
             bits + coder->pos);
 
-    uint64_t mask = ((1UL << bits) - 1) << coder->pos;
+    uint64_t mask = bits < 64 ? ((1UL << bits) - 1) << coder->pos : -1UL;
     value = (value << coder->pos) & mask;
 
     uint64_t* p = (uint64_t*) coder->data;
