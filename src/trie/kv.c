@@ -13,11 +13,11 @@ Static layout:
            2    6  key_len                 x << 1
       1    0    4  value_bits              x << 2
            4    4  value_shift             x << 2
-      2    0    4  key.bits                x << 2
+      2    0    4  key.bits                (x << 2) + 1
            4    4  key.shift               x << 2
       3    0    4  key.prefix_bits         x << 3
            4    4  key.prefix_shift        x << 2
-      4    0    4  val.bits                x << 2
+      4    0    4  val.bits                (x << 2) + 1
            4    4  val.shift               x << 2
       5    0    4  val.prefix_bits         x << 3
            4    4  val.prefix_shift        x << 2
