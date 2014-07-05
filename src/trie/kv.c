@@ -254,6 +254,9 @@ calc_buckets(struct trie_kvs_info *info)
     leftover -= info->key.prefix_bits;
     leftover -= info->val.prefix_bits;
 
+    /* padding before the states bitfield */
+    if (leftover % 8) leftover += 8 - (leftover % 8);
+
     if (info->key.bits < 8) {
         size_t abs_buckets = 1ULL << info->key.bits;
         size_t abs_bucket_bits = info->val.bits ? info->val.bits : 1;
