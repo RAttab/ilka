@@ -191,7 +191,9 @@ adjust_bits(struct trie_kvs_encode_info *encode, size_t max_bits)
 
     size_t non_prefix_bits = encode->bits + encode->shift;
     encode->prefix_bits = max_bits - non_prefix_bits;
-    encode->prefix &= ~((1ULL << non_prefix_bits) - 1);
+
+    uint64_t mask = encode->prefix_bits ? ~((1ULL << non_prefix_bits) - 1) : 0;
+    encode->prefix &= mask;
 
     calc_value(encode->prefix, &encode->prefix_bits, &encode->prefix_shift);
 }
@@ -245,19 +247,22 @@ calc_buckets(struct trie_kvs_info *info)
     leftover -= info->key.prefix_bits;
     leftover -= info->val.prefix_bits;
 
-    size_t abs_buckets = 1ULL << info->key.bits;
-    size_t abs_bucket_bits = info->val.bits ? info->val.bits : 1;
-    size_t abs_avail = (leftover - abs_buckets * 2) / abs_bucket_bits;
-    if (abs_avail >= abs_buckets) {
-        info->buckets = abs_buckets;
-        info->is_abs_buckets = 1;
-        return;
+    if (info->key.bits < 8) {
+        size_t abs_buckets = 1ULL << info->key.bits;
+        size_t abs_bucket_bits = info->val.bits ? info->val.bits : 1;
+        size_t abs_avail = (leftover - abs_buckets * 2) / abs_bucket_bits;
+
+        if (abs_avail >= abs_buckets) {
+            info->buckets = abs_buckets;
+            info->is_abs_buckets = 1;
+            return;
+        }
     }
 
     size_t bucket_size = calc_bucket_size(info);
 
     info->buckets = leftover / bucket_size;
-    if (info->buckets > 32) info->buckets = 32;
+    if (info->buckets > 64) info->buckets = 64;
 
     while (info->buckets * 2 + info->buckets * bucket_size > leftover)
         info->buckets--;
@@ -385,6 +390,7 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
     info->state_offset = bit_decoder_offset(&coder);
     decode_states(&coder, info);
 
+    bit_decode_align(&coder);
     info->bucket_offset = bit_decoder_offset(&coder);
 }
 
@@ -530,6 +536,7 @@ trie_kvs_encode(
     encode_states(&coder, info);
 
 
+    bit_encode_align(&coder);
     info->bucket_offset = bit_encoder_offset(&coder);
     for (size_t i = 0; i < kvs_n; ++i) {
         size_t bucket = !info->is_abs_buckets ? i : key_to_bucket(info, kvs[i].key);
