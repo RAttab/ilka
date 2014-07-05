@@ -79,40 +79,6 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
-// basics_test
-// -----------------------------------------------------------------------------
-
-START_TEST(basics_test)
-{
-    const uint64_t c = 0x0123456789ABCDEFUL;
-
-    struct trie_kvs_info info;
-    struct trie_kv kvs[] = {
-        { c, c, trie_kvs_state_terminal }
-    };
-
-    int r = trie_kvs_info(&info, 64, 1, c, kvs, 1);
-    ck_assert(r);
-
-    ck_assert(info.is_abs_buckets);
-    ck_assert_int_eq(info.buckets, 1);
-    ck_assert_int_eq(info.key_len, 64);
-
-    ck_assert(info.value_bits > 0);
-    ck_assert_int_eq(info.value, c);
-
-    ck_assert_int_eq(info.key.bits, 0);
-    ck_assert_int_eq(info.key.prefix, c);
-
-    ck_assert_int_eq(info.val.bits, 0);
-    ck_assert_int_eq(info.val.prefix, c);
-
-    check_count(&info, 1);
-}
-END_TEST
-
-
-// -----------------------------------------------------------------------------
 // encode / decode
 // -----------------------------------------------------------------------------
 
@@ -149,19 +115,20 @@ check_info(
     ck_assert_int_eq(val->buckets, exp->buckets);
     ck_assert_int_eq(val->is_abs_buckets, exp->is_abs_buckets);
 
+    ck_assert_int_eq(val->value_offset, exp->value_offset);
     ck_assert_int_eq(val->value, exp->value);
+    ck_assert_int_eq(val->has_value, exp->has_value);
     ck_assert_int_eq(val->value_bits, exp->value_bits);
     ck_assert_int_eq(val->value_shift, exp->value_shift);
 
-    ck_assert_int_eq(val->value_offset, exp->value_offset);
-    ck_assert_int_eq(val->state_offset, exp->state_offset);
-    ck_assert_int_eq(val->bucket_offset, exp->bucket_offset);
+    check_encode_info(&val->key, &exp->key);
+    check_encode_info(&val->val, &exp->val);
 
+    ck_assert_int_eq(val->state_offset, exp->state_offset);
     ck_assert_int_eq(val->state[0], exp->state[0]);
     ck_assert_int_eq(val->state[1], exp->state[1]);
 
-    check_encode_info(&val->key, &exp->key);
-    check_encode_info(&val->val, &exp->val);
+    ck_assert_int_eq(val->bucket_offset, exp->bucket_offset);
 }
 
 void
@@ -242,6 +209,21 @@ START_TEST(encode_decode_test)
         check_encode_decode(64, 0, 0, kvs, n);
         check_encode_decode(64, 1, (1UL << 63) + 1, kvs, n);
     }
+
+    {
+        ilka_print_title("max-buckets");
+        const size_t n = 24;
+
+        struct trie_kv kvs[n];
+        for (size_t i = 0; i < n; ++i) {
+            kvs[i].key = i;
+            kvs[i].val = 0;
+            kvs[i].state = trie_kvs_state_terminal;
+        }
+
+        check_encode_decode(64, 0, 0, kvs, n);  // key_bits == 8 -> !abs_buckets
+        check_encode_decode(64, 0, 0, kvs, 16); // key_bits == 4 ->  abs_buckets
+    }
 }
 END_TEST
 
@@ -253,7 +235,6 @@ END_TEST
 void make_suite(Suite *s)
 {
     ilka_tc(s, kvs_test);
-    ilka_tc(s, basics_test);
     ilka_tc(s, encode_decode_test);
 }
 
