@@ -324,11 +324,13 @@ decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
     size_t bits = info->buckets * 2;
 
     /* atomic acquire: states must be fully read before we read any buckets. */
+    enum memory_order order = memory_order_relaxed;
+
     if (info->buckets <= 32)
-        info->state[0] = bit_decode_atomic(coder, bits, memory_order_acquire);
+        info->state[0] = bit_decode_atomic(coder, bits, order);
     else {
-        info->state[0] = bit_decode_atomic(coder, 64, memory_order_acquire);
-        info->state[1] = bit_decode_atomic(coder, bits - 64, memory_order_acquire);
+        info->state[0] = bit_decode_atomic(coder, 64, order);
+        info->state[1] = bit_decode_atomic(coder, bits - 64, order);
     }
 }
 
@@ -357,7 +359,7 @@ decode_bucket(
     else kv.key = bucket;
     kv.key = (kv.key << info->key.shift) | info->key.prefix;
 
-    kv.val = bit_decode_atomic(&coder, info->val.bits, memory_order_relaxed);
+    kv.val = bit_decode_atomic(&coder, info->val.bits, order);
     kv.val = (kv.val << info->val.shift) | info->val.prefix;
 
     return kv;
