@@ -322,12 +322,14 @@ decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
     bit_decode_align(coder);
 
     size_t bits = info->buckets * 2;
-    size_t b0 = info->buckets <= 32 ? bits : 64;
-    size_t b1 = info->buckets <= 32 ?    0 : bits - 64;
 
     /* atomic acquire: states must be fully read before we read any buckets. */
-    info->state[0] = bit_decode_atomic(coder, b0, memory_order_acquire);
-    info->state[1] = bit_decode_atomic(coder, b1, memory_order_acquire);
+    if (info->buckets <= 32)
+        info->state[0] = bit_decode_atomic(coder, bits, memory_order_acquire);
+    else {
+        info->state[0] = bit_decode_atomic(coder, 64, memory_order_acquire);
+        info->state[1] = bit_decode_atomic(coder, bits - 64, memory_order_acquire);
+    }
 }
 
 static struct trie_kv
@@ -423,8 +425,13 @@ encode_states(struct bit_encoder *coder, struct trie_kvs_info *info)
     bit_encode_align(coder);
 
     size_t bits = info->buckets * 2;
-    bit_encode(coder, info->state[0], info->buckets <= 32 ? bits : 64);
-    bit_encode(coder, info->state[1], info->buckets <= 32 ?    0 : bits - 64);
+
+    if (info->buckets <= 32)
+        bit_encode(coder, info->state[0], bits);
+    else {
+        bit_encode(coder, info->state[0], 64);
+        bit_encode(coder, info->state[1], bits - 64);
+    }
 }
 
 static void
