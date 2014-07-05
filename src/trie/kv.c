@@ -176,6 +176,8 @@ next_empty_bucket(const struct trie_kvs_info *info)
 static void
 calc_value(uint64_t value, uint8_t *bits, uint8_t *shift)
 {
+    if (!value) return;
+
     *shift = ctz(value) & ~0x3;
     *bits = 64 - clz(value >> *shift);
     *bits = ceil_div(*bits, 8) * 8;
@@ -301,7 +303,7 @@ trie_kvs_info(
 static void
 decode_info(struct bit_decoder *coder, struct trie_kvs_encode_info *encode)
 {
-    encode->bits = bit_decode(coder, 4) << 2;
+    encode->bits = (bit_decode(coder, 4) + 1) << 2;
     encode->shift = bit_decode(coder, 4) << 2;
 
     encode->prefix_bits = bit_decode(coder, 4) << 3;
@@ -406,7 +408,7 @@ trie_kvs_decode(struct trie_kvs_info *info, const void *data)
 static void
 encode_info(struct bit_encoder *coder, const struct trie_kvs_encode_info *encode)
 {
-    bit_encode(coder, encode->bits >> 2, 4);
+    bit_encode(coder, (encode->bits >> 2) - 1, 4);
     bit_encode(coder, encode->shift >> 2, 4);
 
     bit_encode(coder, encode->prefix_bits >> 3, 4);
