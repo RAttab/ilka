@@ -142,7 +142,7 @@ check_encode_decode(
 
     {
         int r = trie_kvs_info(&info, key_len, has_value, value, kvs, kvs_n);
-        printf("info="); trie_kvs_print_info(&info); printf("\n");
+        /* printf("info="); trie_kvs_print_info(&info); printf("\n"); */
         ck_assert(r);
 
         trie_kvs_encode(&info, kvs, kvs_n, data);
@@ -224,6 +224,40 @@ START_TEST(encode_decode_test)
         check_encode_decode(64, 0, 0, kvs, n);  // key_bits == 8 -> !abs_buckets
         check_encode_decode(64, 0, 0, kvs, 16); // key_bits == 4 ->  abs_buckets
     }
+
+    {
+        ilka_print_title("padding-bucket-key");
+        const size_t n = 2;
+
+        struct trie_kv kvs[n];
+        for (size_t i = 0; i < n; ++i) {
+            kvs[i].key = i;
+            kvs[i].val = (i << 63) + 1;
+            kvs[i].state = trie_kvs_state_terminal;
+        }
+
+        check_encode_decode(64, 0, 0, kvs, n);
+    }
+
+    {
+        ilka_print_title("padding-bucket-val");
+        const size_t n = 2;
+
+        struct trie_kv kvs[n];
+        for (size_t i = 0; i < n; ++i) {
+            kvs[i].key = (i << 63) + 1;
+            kvs[i].val = i;
+            kvs[i].state = trie_kvs_state_terminal;
+        }
+
+        check_encode_decode(64, 0, 0, kvs, n);
+    }
+
+    {
+        ilka_print_title("no-bucket");
+        check_encode_decode(64, 1, 0x1, 0, 0);
+    }
+
 }
 END_TEST
 

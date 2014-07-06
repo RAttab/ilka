@@ -181,7 +181,10 @@ next_empty_bucket(const struct trie_kvs_info *info)
 static void
 calc_value(uint64_t value, uint8_t *bits, uint8_t *shift)
 {
-    if (!value) return;
+    if (!value) {
+        *bits = 0;
+        return;
+    }
 
     *shift = ctz(value) & ~0x3;
     *bits = 64 - clz(value >> *shift);
@@ -289,7 +292,6 @@ trie_kvs_info(
         int has_value, uint64_t value,
         const struct trie_kv *kvs, size_t kvs_n)
 {
-    if (!kvs_n) ilka_error("empty kvs");
     if (!is_pow2(key_len))
         ilka_error("key length <%zu> must be a power of 2", key_len);
 
@@ -303,9 +305,13 @@ trie_kvs_info(
         calc_value(info->value, &info->value_bits, &info->value_shift);
     }
 
-    calc_bits(info, kvs, kvs_n);
-    calc_padding(info);
-    calc_buckets(info);
+    if (kvs_n) {
+        calc_bits(info, kvs, kvs_n);
+        calc_padding(info);
+        calc_buckets(info);
+    }
+    /* While we have no buckets, bits can't be 0 if we want consistent decoding */
+    else info->key.bits = info->val.bits = info->key_len;
 
     return kvs_n <= info->buckets;
 }
