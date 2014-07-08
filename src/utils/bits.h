@@ -25,21 +25,20 @@ inline size_t pop(uint64_t x) { return __builtin_popcountll(x); }
 // custom
 // -----------------------------------------------------------------------------
 
+inline uint64_t leading_bit(uint64_t x)
+{
+    return x & (1ULL << (63 - clz(x)));
+}
+
 inline int is_pow2(uint64_t x) { return pop(x) == 1; }
 inline uint64_t ceil_pow2(size_t x)
 {
-    size_t max_bits = sizeof(uint64_t) * 8;
-    return 1ULL << (max_bits - clz(x - 1) + 1);
+    return x ? leading_bit(x - 1) << 1 : 1;
 }
 
 inline size_t ceil_div(size_t n, size_t d)
 {
     return n ? ((n - 1) / d) + 1 : 0;
-}
-
-inline uint64_t leading_bit(uint64_t x)
-{
-    return x & (1ULL << (63 - clz(x)));
 }
 
 // -----------------------------------------------------------------------------
