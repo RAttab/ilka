@@ -260,7 +260,7 @@ START_TEST(encode_decode_test)
     }
 
     ilka_print_title("misc");
-    for (size_t i = 0; i < 15; ++i) {
+    for (size_t i = 0; i < 16; ++i) {
         printf("\n%zu:\n", i);
         const size_t n = 3;
 
