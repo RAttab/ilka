@@ -8,6 +8,7 @@
 #include "check.h"
 #include "trie/kv.h"
 #include "utils/arch.h"
+#include "utils/bits.h"
 
 
 // -----------------------------------------------------------------------------
@@ -256,6 +257,24 @@ START_TEST(encode_decode_test)
     {
         ilka_print_title("no-bucket");
         check_encode_decode(64, 1, 0x1, 0, 0);
+    }
+
+    ilka_print_title("misc");
+    for (size_t i = 0; i < 15; ++i) {
+        printf("\n%zu:\n", i);
+        const size_t n = 3;
+
+        struct trie_kv kvs[n];
+        for (uint64_t j = 0; j < n; ++j) {
+            kvs[j].key = j << (i * 4);
+            kvs[j].val = j << ((15 - i) * 4);
+            kvs[j].state = trie_kvs_state_branch;
+
+            printf("kv[%lu] = ", j); trie_kvs_print_kv(kvs[j]); printf("\n");
+        }
+
+        size_t key_len = ceil_pow2((i + 1) * 4);
+        check_encode_decode(key_len, 0, 0, kvs, n);
     }
 
 }

@@ -219,8 +219,8 @@ calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
     uint64_t key_same = -1ULL;
     uint64_t val_same = -1ULL;
 
+    info->key.shift = info->key_len;
     info->val.shift = 64;
-    info->key.shift = 64;
 
     info->key.prefix = kvs[0].key;
     info->val.prefix = kvs[0].val;
@@ -238,6 +238,8 @@ calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
 
     info->key.prefix_bits = clz(~key_same);
     info->val.prefix_bits = clz(~val_same);
+
+    info->key.prefix_bits -= 64 - info->key_len;
 
     adjust_bits(&info->key, info->key_len);;
     adjust_bits(&info->val, 64);
@@ -266,7 +268,9 @@ calc_buckets(struct trie_kvs_info *info)
     if (leftover % 8) leftover += 8 - (leftover % 8);
 
     if (info->key.bits == 4) {
-        size_t abs_buckets = 1ULL << info->key.bits;
+        size_t abs_key_bits =
+            info->key_len < info->key.bits ? info->key_len : info->key.bits;
+        size_t abs_buckets = 1UL << abs_key_bits;
         size_t abs_bucket_bits = info->val.bits ? info->val.bits : 1;
         size_t abs_avail = (leftover - abs_buckets * 2) / abs_bucket_bits;
 
@@ -310,7 +314,7 @@ trie_kvs_info(
         calc_padding(info);
         calc_buckets(info);
     }
-    /* While we have no buckets, bits can't be 0 if we want consistent decoding */
+    /* While we have no buckets, bits can't be 0 if to get consistent decoding */
     else info->key.bits = info->val.bits = info->key_len;
 
     return kvs_n <= info->buckets;
