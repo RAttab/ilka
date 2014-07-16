@@ -307,6 +307,10 @@ trie_kvs_info(
         info->has_value = 1;
         info->value = value;
         calc_value(info->value, &info->value_bits, &info->value_shift);
+
+        /* Since 64 is a valid value, we need to cap the lower end to 4 to fit
+         * the encoded value within 4 bit. */
+        if (!info->value_bits) info->value_bits = 4;
     }
 
     if (kvs_n) {
@@ -908,7 +912,7 @@ trie_kvs_print_kv(struct trie_kv kv)
 }
 
 void
-print_encode(struct trie_kvs_encode_info *encode)
+print_encode(const struct trie_kvs_encode_info *encode)
 {
     printf("{ bits=%d, shift=%d, prefix_bits=%d, prefix_shift=%d, prefix=%p, pad=%d }\n",
             (int) encode->bits, (int) encode->shift,
@@ -917,7 +921,7 @@ print_encode(struct trie_kvs_encode_info *encode)
 }
 
 void
-trie_kvs_print_info(struct trie_kvs_info *info)
+trie_kvs_print_info(const struct trie_kvs_info *info)
 {
     printf("{\n"
             "\tsize=%d\n"
