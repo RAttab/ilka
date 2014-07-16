@@ -645,8 +645,10 @@ trie_kvs_lb(struct trie_kvs_info *info, uint64_t key, const void *data)
          bucket = next_bucket(info, bucket + 1))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data);
+
         if (kv.key > key) continue;
-        if (kv.key < match.key) continue;
+        if (match.state != trie_kvs_state_empty && kv.key < match.key)
+            continue;
 
         if (kv.key == key) return kv;
         match = kv;
@@ -662,7 +664,7 @@ trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data)
 
     if (info->is_abs_buckets) {
         size_t bucket = next_bucket(info, key_to_bucket(info, key));
-        if (bucket >= 64) return match;
+        if (bucket >= info->buckets) return match;
         return decode_bucket(info, bucket, data);
     }
 
@@ -671,8 +673,10 @@ trie_kvs_ub(struct trie_kvs_info *info, uint64_t key, const void *data)
          bucket = next_bucket(info, bucket + 1))
     {
         struct trie_kv kv = decode_bucket(info, bucket, data);
-        if (kv.key > key) continue;
-        if (kv.key < match.key) continue;
+
+        if (kv.key < key) continue;
+        if (match.state != trie_kvs_state_empty && kv.key > match.key)
+            continue;
 
         if (kv.key == key) return kv;
         match = kv;

@@ -29,6 +29,77 @@ make_kv(uint64_t k, uint64_t v)
     } while(0)
 
 
+#define check_kv(kv, exp)                       \
+    do {                                        \
+        ck_assert_int_eq(kv.key, exp.key);      \
+        ck_assert_int_eq(kv.val, exp.val);      \
+        ck_assert_int_eq(kv.state, exp.state);  \
+    } while (0)
+
+
+void
+check_encode_info(
+        const struct trie_kvs_encode_info *val,
+        const struct trie_kvs_encode_info *exp)
+{
+    ck_assert_int_eq(val->bits, exp->bits);
+    ck_assert_int_eq(val->shift, exp->shift);
+
+    ck_assert_int_eq(val->prefix, exp->prefix);
+    ck_assert_int_eq(val->prefix_bits, exp->prefix_bits);
+    ck_assert_int_eq(val->prefix_shift, exp->prefix_shift);
+
+    ck_assert_int_eq(val->padding, exp->padding);
+}
+
+void
+check_info(
+        const struct trie_kvs_info *val,
+        const struct trie_kvs_info *exp)
+{
+    ck_assert_int_eq(val->size, exp->size);
+    ck_assert_int_eq(val->key_len, exp->key_len);
+
+    ck_assert_int_eq(val->buckets, exp->buckets);
+    ck_assert_int_eq(val->is_abs_buckets, exp->is_abs_buckets);
+
+    ck_assert_int_eq(val->value_offset, exp->value_offset);
+    ck_assert_int_eq(val->value, exp->value);
+    ck_assert_int_eq(val->has_value, exp->has_value);
+    ck_assert_int_eq(val->value_bits, exp->value_bits);
+    ck_assert_int_eq(val->value_shift, exp->value_shift);
+
+    check_encode_info(&val->key, &exp->key);
+    check_encode_info(&val->val, &exp->val);
+
+    ck_assert_int_eq(val->state_offset, exp->state_offset);
+    ck_assert_int_eq(val->state[0], exp->state[0]);
+    ck_assert_int_eq(val->state[1], exp->state[1]);
+
+    ck_assert_int_eq(val->bucket_offset, exp->bucket_offset);
+}
+
+void
+encode( struct trie_kvs_info* info, uint64_t key_len,
+        int has_value, uint64_t value,
+        const struct trie_kv *kvs, size_t kvs_n,
+        void *data)
+{
+    struct trie_kvs_info temp_info;
+    int r = trie_kvs_info(&temp_info, key_len, has_value, value, kvs, kvs_n);
+    /* printf("info="); trie_kvs_print_info(&temp_info); printf("\n"); */
+    ck_assert(r);
+
+    trie_kvs_encode(&temp_info, kvs, kvs_n, data);
+    printf("encoded="); trie_kvs_print_info(&temp_info); printf("\n");
+
+    trie_kvs_decode(info, data);
+    printf("decoded="); trie_kvs_print_info(info); printf("\n");
+
+    check_info(info, &temp_info);
+}
+
+
 // -----------------------------------------------------------------------------
 // kvs_test
 // -----------------------------------------------------------------------------
@@ -83,55 +154,6 @@ END_TEST
 // encode / decode
 // -----------------------------------------------------------------------------
 
-#define check_kv(kv, exp)                       \
-    do {                                        \
-        ck_assert_int_eq(kv.key, exp.key);      \
-        ck_assert_int_eq(kv.val, exp.val);      \
-        ck_assert_int_eq(kv.state, exp.state);  \
-    } while (0)
-
-void
-check_encode_info(
-        const struct trie_kvs_encode_info *val,
-        const struct trie_kvs_encode_info *exp)
-{
-    ck_assert_int_eq(val->bits, exp->bits);
-    ck_assert_int_eq(val->shift, exp->shift);
-
-    ck_assert_int_eq(val->prefix, exp->prefix);
-    ck_assert_int_eq(val->prefix_bits, exp->prefix_bits);
-    ck_assert_int_eq(val->prefix_shift, exp->prefix_shift);
-
-    ck_assert_int_eq(val->padding, exp->padding);
-}
-
-void
-check_info(
-        const struct trie_kvs_info *val,
-        const struct trie_kvs_info *exp)
-{
-    ck_assert_int_eq(val->size, exp->size);
-    ck_assert_int_eq(val->key_len, exp->key_len);
-
-    ck_assert_int_eq(val->buckets, exp->buckets);
-    ck_assert_int_eq(val->is_abs_buckets, exp->is_abs_buckets);
-
-    ck_assert_int_eq(val->value_offset, exp->value_offset);
-    ck_assert_int_eq(val->value, exp->value);
-    ck_assert_int_eq(val->has_value, exp->has_value);
-    ck_assert_int_eq(val->value_bits, exp->value_bits);
-    ck_assert_int_eq(val->value_shift, exp->value_shift);
-
-    check_encode_info(&val->key, &exp->key);
-    check_encode_info(&val->val, &exp->val);
-
-    ck_assert_int_eq(val->state_offset, exp->state_offset);
-    ck_assert_int_eq(val->state[0], exp->state[0]);
-    ck_assert_int_eq(val->state[1], exp->state[1]);
-
-    ck_assert_int_eq(val->bucket_offset, exp->bucket_offset);
-}
-
 void
 check_encode_decode(
         size_t key_len,
@@ -141,38 +163,22 @@ check_encode_decode(
     struct trie_kvs_info info;
     uint8_t data[ILKA_CACHE_LINE] = { 0 };
 
-    {
-        int r = trie_kvs_info(&info, key_len, has_value, value, kvs, kvs_n);
-        /* printf("info="); trie_kvs_print_info(&info); printf("\n"); */
-        ck_assert(r);
+    encode(&info, key_len, has_value, value, kvs, kvs_n, data);
 
-        trie_kvs_encode(&info, kvs, kvs_n, data);
-        printf("encoded="); trie_kvs_print_info(&info); printf("\n");
+    ck_assert_int_eq(trie_kvs_count(&info), has_value + kvs_n);
 
-        ck_assert(info.size <= ILKA_CACHE_LINE);
-        ck_assert_int_eq(info.key_len, key_len);
-    }
-
-    struct trie_kvs_info decoded_info;
-    trie_kvs_decode(&decoded_info, data);
-    printf("decoded="); trie_kvs_print_info(&decoded_info); printf("\n");
-
-    check_info(&info, &decoded_info);
-
-    ck_assert_int_eq(trie_kvs_count(&decoded_info), has_value + kvs_n);
-
-    if (!has_value) ck_assert(!decoded_info.value_bits);
+    if (!has_value) ck_assert(!info.value_bits);
     else {
-        ck_assert(decoded_info.value_bits);
-        ck_assert_int_eq(decoded_info.value, value);
+        ck_assert(info.value_bits);
+        ck_assert_int_eq(info.value, value);
     }
 
-    struct trie_kv decoded_kvs[decoded_info.buckets];
-    size_t n = trie_kvs_extract(&info, decoded_kvs, decoded_info.buckets, data);
+    struct trie_kv decoded_kvs[info.buckets];
+    size_t n = trie_kvs_extract(&info, decoded_kvs, info.buckets, data);
     ck_assert_int_eq(n, kvs_n);
 
     for (size_t i = 0; i < kvs_n; ++i) {
-        struct trie_kv kv = trie_kvs_get(&decoded_info, kvs[i].key, data);
+        struct trie_kv kv = trie_kvs_get(&info, kvs[i].key, data);
         ck_assert(kv.state != trie_kvs_state_empty);
 
         check_kv(kv, kvs[i]);
@@ -282,6 +288,70 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// bounds
+// -----------------------------------------------------------------------------
+
+#define check_lb(info, data, key, exp)                          \
+    do {                                                        \
+        struct trie_kv kv = trie_kvs_lb(info, key, data);       \
+        check_kv(kv, exp);                                      \
+    } while (0)
+
+#define check_ub(info, data, key, exp)                          \
+    do {                                                        \
+        struct trie_kv kv = trie_kvs_ub(info, key, data);       \
+        check_kv(kv, exp);                                      \
+    } while (0)
+
+
+START_TEST(bounds_test)
+{
+    const struct trie_kv nil = { .state = trie_kvs_state_empty };
+
+    struct trie_kvs_info info;
+    uint8_t data[ILKA_CACHE_LINE];
+
+    ilka_print_title("bounds-simple");
+
+    for (size_t n = 1; n <= 24; n++) {
+        struct trie_kv kvs[n];
+
+        printf("kvs(%zu)=[\n", n);
+        for (size_t i = 0; i < n; ++i) {
+            kvs[i].key = kvs[i].val = (i + 1) * 2;
+            kvs[i].state = trie_kvs_state_branch;
+            printf("    { %p -> %p }\n", (void*) kvs[i].key, (void*) kvs[i].val);
+        }
+        printf("]\n\n");
+
+
+        encode(&info, 64, 1, 0x0, kvs, n, data);
+
+        check_lb(&info, data, 0, nil);
+        check_ub(&info, data, 0, kvs[0]);
+
+        for (size_t i = 0; i < n; ++i) {
+            check_lb(&info, data, kvs[i].key, kvs[i]);
+            check_ub(&info, data, kvs[i].key, kvs[i]);
+
+            if (i) check_lb(&info, data, kvs[i].key - 1, kvs[i - 1]);
+            check_ub(&info, data, kvs[i].key - 1, kvs[i]);
+
+            check_lb(&info, data, kvs[i].key + 1, kvs[i]);
+            if (i < n - 1) check_ub(&info, data, kvs[i].key + 1, kvs[i + 1]);
+        }
+
+        check_lb(&info, data, -1UL, kvs[n -1]);
+        check_ub(&info, data, -1UL, nil);
+    }
+
+    /* Could get into more complicated use cases but I'm not convinced it's
+     * worth it. */
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
 
@@ -289,6 +359,7 @@ void make_suite(Suite *s)
 {
     ilka_tc(s, kvs_test);
     ilka_tc(s, encode_decode_test);
+    ilka_tc(s, bounds_test);
 }
 
 int main(void)
