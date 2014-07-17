@@ -744,33 +744,22 @@ trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
             kvs_n, (void*) kv.key);
 }
 
-static int
-can_add_bucket(struct trie_kvs_info *info, uint64_t key)
-{
-    if (!info->is_abs_buckets)
-        return next_empty_bucket(info) < info->buckets;
-
-    size_t bucket = key_to_bucket(info, key);
-    if (bucket >= info->buckets) return 0;
-
-    if (get_bucket_state(info, bucket) == trie_kvs_state_empty) return 1;
-    ilka_error("trying to add duplicate key <%p>", (void*) key);
-}
-
 int
 trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
 {
-    return can_encode(&info->key, kv.key)
-        && can_encode(&info->val, kv.val)
-        && can_add_bucket(info, kv.key);
+    if (!can_encode(&info->key, kv.key) || !can_encode(&info->val, kv.val))
+        return 0;
+
+    size_t bucket = info->is_abs_buckets ?
+        key_to_bucket(info, kv.key) : next_empty_bucket(info);
+    return bucket < info->buckets;
 }
 
 void
 trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
 {
     size_t bucket = info->is_abs_buckets ?
-        key_to_bucket(info, kv.key) :
-        next_empty_bucket(info);
+        key_to_bucket(info, kv.key) : next_empty_bucket(info);
 
     encode_bucket(info, bucket, kv, data);
     encode_state(info, bucket, kv.state, data);
@@ -796,8 +785,7 @@ trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 int
 trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv)
 {
-    return can_add_bucket(info, kv.key)
-        && can_encode(&info->val, kv.val);
+    return can_encode(&info->val, kv.val);
 }
 
 void
