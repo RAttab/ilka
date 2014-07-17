@@ -160,6 +160,7 @@ next_empty_bucket_impl(uint64_t bf)
     const uint64_t mask = 0x5555555555555555ULL;
 
     uint64_t s = ((bf >> 1) | bf) & mask;
+    s |= s << 1;
     return ctz(~s) / 2;
 }
 
@@ -241,7 +242,7 @@ calc_bits(struct trie_kvs_info *info, const struct trie_kv *kvs, size_t kvs_n)
 
     info->key.prefix_bits -= 64 - info->key_len;
 
-    adjust_bits(&info->key, info->key_len);;
+    adjust_bits(&info->key, info->key_len);
     adjust_bits(&info->val, 64);
 }
 
@@ -469,6 +470,8 @@ encode_state(
     /* atomic release: make sure that any written buckets are visible before
      * updating the state. */
     bit_encode_atomic(&coder, state, 2, memory_order_release);
+
+    set_bucket_state(info, bucket, state);
 }
 
 static int
@@ -744,21 +747,22 @@ trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 static int
 can_add_bucket(struct trie_kvs_info *info, uint64_t key)
 {
-    if (info->is_abs_buckets) {
-        size_t bucket = key_to_bucket(info, key);
-        if (get_bucket_state(info, bucket) == trie_kvs_state_empty) return 1;
-        ilka_error("trying to add duplicate key <%p>", (void*) key);
-    }
+    if (!info->is_abs_buckets)
+        return next_empty_bucket(info) < info->buckets;
 
-    return next_empty_bucket(info) < info->buckets;
+    size_t bucket = key_to_bucket(info, key);
+    if (bucket >= info->buckets) return 0;
+
+    if (get_bucket_state(info, bucket) == trie_kvs_state_empty) return 1;
+    ilka_error("trying to add duplicate key <%p>", (void*) key);
 }
 
 int
 trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
 {
-    return can_add_bucket(info, kv.key)
-        && can_encode(&info->key, kv.key)
-        && can_encode(&info->val, kv.val);
+    return can_encode(&info->key, kv.key)
+        && can_encode(&info->val, kv.val)
+        && can_add_bucket(info, kv.key);
 }
 
 void

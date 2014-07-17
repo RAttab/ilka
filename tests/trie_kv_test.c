@@ -352,6 +352,106 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// add_inplace
+// -----------------------------------------------------------------------------
+
+START_TEST(add_inplace_test)
+{
+    ilka_print_title("add_inplace");
+
+    for (size_t n = 2; n <= 12; ++n) {
+        struct trie_kvs_info info;
+        uint8_t data[ILKA_CACHE_LINE];
+
+        struct trie_kv kvs[n];
+
+        printf("\n\nkvs(%zu)=[\n", n);
+        for (size_t i = 0; i < n; ++i) {
+            kvs[i].key = i * 2 + 1;
+            kvs[i].val = kvs[i].key << 8;
+            kvs[i].state = trie_kvs_state_terminal;
+            printf("    { %p -> %p }\n", (void*) kvs[i].key, (void*) kvs[i].val);
+        }
+        printf("]\n\n");
+
+        encode(&info, 64, 0, 0, kvs, n, data);
+
+        // test whether we can encode the value.
+        ck_assert_int_eq(info.key.shift, 0);
+        ck_assert_int_eq(info.val.shift, 8);
+        ck_assert( trie_kvs_can_add_inplace(&info, make_kv(0x000002, 0x000200)));
+        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(0x000200, 0x000200)));
+        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(0x000002, 0x000002)));
+        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(0x000002, 0x020000)));
+
+        for (size_t i = 0; i < info.buckets; ++i) {
+            if (i / 2 < n && i % 2 == 1) continue;
+
+            struct trie_kv kv = make_kv(i, i << 8);
+            ck_assert(trie_kvs_can_add_inplace(&info, kv));
+            trie_kvs_add_inplace(&info, kv, data);
+        }
+
+        printf("\nafter="); trie_kvs_print_info(&info); printf("\n");
+
+        ck_assert_int_eq(info.buckets, trie_kvs_count(&info));
+        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(info.buckets, info.buckets << 8)));
+
+        for (size_t i = 0; i < info.buckets; ++i) {
+            struct trie_kv kv = trie_kvs_get(&info, i, data);
+            check_kv(kv, make_kv(i, i << 8));
+        }
+
+    }
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// set_inplace
+// -----------------------------------------------------------------------------
+
+START_TEST(set_inplace_test)
+{
+
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// set_value_inplace
+// -----------------------------------------------------------------------------
+
+START_TEST(set_value_inplace_test)
+{
+    
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// remove
+// -----------------------------------------------------------------------------
+
+START_TEST(remove_test)
+{
+
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// burst
+// -----------------------------------------------------------------------------
+
+START_TEST(burst_test)
+{
+
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
 
@@ -360,6 +460,13 @@ void make_suite(Suite *s)
     ilka_tc(s, kvs_test);
     ilka_tc(s, encode_decode_test);
     ilka_tc(s, bounds_test);
+
+    ilka_tc(s, add_inplace_test);
+    ilka_tc(s, set_inplace_test);
+    ilka_tc(s, set_value_inplace_test);
+    ilka_tc(s, remove_test);
+
+    ilka_tc(s, burst_test);
 }
 
 int main(void)
