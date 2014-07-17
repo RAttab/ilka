@@ -265,6 +265,13 @@ START_TEST(encode_decode_test)
         check_encode_decode(64, 1, 0x1, 0, 0);
     }
 
+    {
+        ilka_print_title("single-value");
+
+        struct trie_kv kvs = { 0x11, 0x11, trie_kvs_state_terminal };
+        check_encode_decode(64, 0, 0, &kvs, 1);
+    }
+
     ilka_print_title("misc");
     for (size_t i = 0; i < 16; ++i) {
         printf("\n%zu:\n", i);
