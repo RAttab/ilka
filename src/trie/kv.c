@@ -754,6 +754,12 @@ trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
         key_to_bucket(info, kv.key) : next_empty_bucket(info);
     if (bucket >= info->buckets) return 0;
 
+    {
+        enum trie_kvs_state s = get_bucket_state(info, bucket);
+        ilka_assert(s == trie_kvs_state_empty || s == trie_kvs_state_tombstone,
+                "adding to non-empty bucket");
+    }
+
     encode_bucket(info, bucket, kv, data);
     encode_state(info, bucket, kv.state, data);
 
@@ -783,6 +789,12 @@ trie_kvs_set_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
     if (!can_encode(&info->val, kv.val)) return 0;
 
     size_t bucket = find_bucket(info, 0, data);
+    {
+        enum trie_kvs_state s = get_bucket_state(info, bucket);
+        ilka_assert(s == trie_kvs_state_terminal || s == trie_kvs_state_branch,
+                "setting empty bucket");
+    }
+
     encode_bucket_value(info, bucket, kv.val, data);
     encode_state(info, bucket, kv.state, data);
 
@@ -800,17 +812,14 @@ trie_kvs_set_value_inplace(
 {
     if (!info->has_value) return 0;
     if (value & ((1UL << info->value_shift) - 1)) return 0;
-    {
-        uint8_t bits = 64 - clz(value >> info->value_shift);
-        if (bits > info->value_bits) return 0;
-    }
+
+    value >>= info->value_shift;
+    if ((64 - clz(value)) > info->value_bits) return 0;
 
 
     struct bit_encoder coder;
     bit_encoder_init(&coder, data, info->size);
     bit_encode_skip(&coder, info->value_offset);
-
-    value >>= info->value_shift;
 
     /* atomic release: make sure that the new value is visible as soon as we
      * write it. */
