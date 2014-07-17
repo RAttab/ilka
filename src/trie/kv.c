@@ -745,24 +745,19 @@ trie_kvs_add(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 }
 
 int
-trie_kvs_can_add_inplace(struct trie_kvs_info *info, struct trie_kv kv)
+trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
 {
     if (!can_encode(&info->key, kv.key) || !can_encode(&info->val, kv.val))
         return 0;
 
     size_t bucket = info->is_abs_buckets ?
         key_to_bucket(info, kv.key) : next_empty_bucket(info);
-    return bucket < info->buckets;
-}
-
-void
-trie_kvs_add_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
-{
-    size_t bucket = info->is_abs_buckets ?
-        key_to_bucket(info, kv.key) : next_empty_bucket(info);
+    if (bucket >= info->buckets) return 0;
 
     encode_bucket(info, bucket, kv, data);
     encode_state(info, bucket, kv.state, data);
+
+    return 1;
 }
 
 
@@ -783,17 +778,15 @@ trie_kvs_set(struct trie_kv *kvs, size_t kvs_n, struct trie_kv kv)
 }
 
 int
-trie_kvs_can_set_inplace(struct trie_kvs_info *info, struct trie_kv kv)
-{
-    return can_encode(&info->val, kv.val);
-}
-
-void
 trie_kvs_set_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
 {
+    if (!can_encode(&info->val, kv.val)) return 0;
+
     size_t bucket = find_bucket(info, 0, data);
     encode_bucket_value(info, bucket, kv.val, data);
     encode_state(info, bucket, kv.state, data);
+
+    return 1;
 }
 
 
@@ -802,19 +795,17 @@ trie_kvs_set_inplace(struct trie_kvs_info *info, struct trie_kv kv, void *data)
 // -----------------------------------------------------------------------------
 
 int
-trie_kvs_can_set_value_inplace(struct trie_kvs_info *info, uint64_t value)
-{
-    if (!info->has_value) return 0;
-    if (value & ((1UL << info->value_shift) - 1)) return 0;
-
-    uint8_t bits = 64 - clz(value >> info->value_shift);
-    return bits <= info->value_bits;
-}
-
-void
 trie_kvs_set_value_inplace(
         struct trie_kvs_info *info, uint64_t value, void *data)
 {
+    if (!info->has_value) return 0;
+    if (value & ((1UL << info->value_shift) - 1)) return 0;
+    {
+        uint8_t bits = 64 - clz(value >> info->value_shift);
+        if (bits > info->value_bits) return 0;
+    }
+
+
     struct bit_encoder coder;
     bit_encoder_init(&coder, data, info->size);
     bit_encode_skip(&coder, info->value_offset);
@@ -824,6 +815,8 @@ trie_kvs_set_value_inplace(
     /* atomic release: make sure that the new value is visible as soon as we
      * write it. */
     bit_encode_atomic(&coder, value, info->value_bits, memory_order_release);
+
+    return 1;
 }
 
 

@@ -470,10 +470,8 @@ add_to_node(
             .state = trie_kvs_state_terminal
         };
 
-        if (trie_kvs_can_add_inplace(info, kv)) {
-            trie_kvs_add_inplace(info, kv, p_node);
+        if (trie_kvs_add_inplace(info, kv, p_node))
             return node;
-        }
     }
 
     const size_t kvs_n = info->buckets;
@@ -528,10 +526,8 @@ add_to_child(
     child.val = new_child;
     child.state = trie_kvs_state_branch;
 
-    if (trie_kvs_can_set_inplace(info, child)) {
-        trie_kvs_set_inplace(info, child, p_node);
+    if (trie_kvs_set_inplace(info, child, p_node))
         return node;
-    }
 
     struct trie_kv kvs[info->buckets];
     trie_kvs_extract(info, kvs, info->buckets, p_node);

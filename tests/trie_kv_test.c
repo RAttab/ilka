@@ -379,23 +379,22 @@ START_TEST(add_inplace_test)
         // test whether we can encode the value.
         ck_assert_int_eq(info.key.shift, 0);
         ck_assert_int_eq(info.val.shift, 8);
-        ck_assert( trie_kvs_can_add_inplace(&info, make_kv(0x000002, 0x000200)));
-        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(0x000200, 0x000200)));
-        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(0x000002, 0x000002)));
-        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(0x000002, 0x020000)));
+        ck_assert(!trie_kvs_add_inplace(&info, make_kv(0x000200, 0x000200), data));
+        ck_assert(!trie_kvs_add_inplace(&info, make_kv(0x000002, 0x000002), data));
+        ck_assert(!trie_kvs_add_inplace(&info, make_kv(0x000002, 0x020000), data));
 
         for (size_t i = 0; i < info.buckets; ++i) {
             if (i / 2 < n && i % 2 == 1) continue;
-
-            struct trie_kv kv = make_kv(i, i << 8);
-            ck_assert(trie_kvs_can_add_inplace(&info, kv));
-            trie_kvs_add_inplace(&info, kv, data);
+            ck_assert(trie_kvs_add_inplace(&info, make_kv(i, i << 8), data));
         }
 
         printf("\nafter="); trie_kvs_print_info(&info); printf("\n");
 
         ck_assert_int_eq(info.buckets, trie_kvs_count(&info));
-        ck_assert(!trie_kvs_can_add_inplace(&info, make_kv(info.buckets, info.buckets << 8)));
+        {
+            struct trie_kv kv = make_kv(info.buckets, info.buckets << 8);
+            ck_assert(!trie_kvs_add_inplace(&info, kv, data));
+        }
 
         for (size_t i = 0; i < info.buckets; ++i) {
             struct trie_kv kv = trie_kvs_get(&info, i, data);
