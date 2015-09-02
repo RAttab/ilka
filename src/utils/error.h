@@ -31,3 +31,6 @@ void ilka_verror_errno(const char *file, int line, const char *fmt, ...)
         if (ilka_unlikely(!(p)))                                \
             ilka_error(__VA_ARGS__);                            \
     } while (0)
+
+#define ilka_todo()                                     \
+    ilka_error(__FUNCTION__ ": not yet implemented")

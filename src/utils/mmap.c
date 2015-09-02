@@ -1,0 +1,53 @@
+/* mmap.c
+   Rémi Attab (remi.attab@gmail.com), 02 Sep 2015
+   FreeBSD-style copyright and disclaimer apply
+*/
+
+#include <sys/mman.h>
+
+// -----------------------------------------------------------------------------
+// mmap
+// -----------------------------------------------------------------------------
+
+void * mmap_map(int fd, size_t len, enum ilka_mode mode)
+{
+    int prot = PROT_READ;
+    if (mode & ilka_write) prot |= PROT_WRITE;
+
+    int flags = MAP_PRIVATE;
+    if (mode & ilka_huge_tlb) flags |= MAP_HUGETLB;
+    if (mode & ilka_populate) flags |= MAP_POPULATE;
+
+    void * start = mmap(NULL, len, prot, flags, fd, 0);
+    if (start == MAP_FAILED) {
+        ilka_error_errno("unable to mmap fd '%d' with length '%lu'", fd, len);
+    }
+
+    return start;
+}
+
+void mmap_unmap(void *start, size_t len)
+{
+    if (munmap(start, len) == -1) {
+        ilka_error_errno("unable to unmap '%lu' with length '%lu'", start, len);
+    }
+}
+
+bool mmap_remap_soft(void *start, size_t old, size_t new)
+{
+    void * ret = mremap(start, old, new, 0);
+    if (ret != MAP_FAILED) return true;
+    if (errno == ENOMMEM) return false;
+
+    ilka_error_errno("unable to soft remap '%lu' from '%lu' to '%lu'", start, old, new);
+}
+
+void * mmap_remap_hard(void *start, size_t old, size_t new)
+{
+    void * ret = mremap(start, old, new, MREMAP_MAYMOVE);
+    if (ret == MAP_FAILED) {
+        ilka_error_errno("unable to hard remap '%lu' from '%lu' to '%lu'", start, old, new);
+    }
+
+    return ret;
+}

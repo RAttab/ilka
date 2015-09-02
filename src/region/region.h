@@ -7,22 +7,6 @@
 
 #pragma once
 
-#include "utils/alloc.h"
-#include "utils/compiler.h"
-#include "utils/atomic.h"
-
-#include <stdlib.h>
-
-
-// -----------------------------------------------------------------------------
-// ilka ptr
-// -----------------------------------------------------------------------------
-
-/* Must be pinned by the region before it can be accessed through a regular
- * pointer. This allows the region to keep track of ongoing reads and writes and
- * block them when necessary. */
-typedef uint64_t ilka_ptr_t;
-
 
 // -----------------------------------------------------------------------------
 // region
@@ -30,33 +14,42 @@ typedef uint64_t ilka_ptr_t;
 
 struct ilka_region;
 
+enum ilka_open_mode
+{
+    ilka_open   = 1 << 0,
+    ilka_create = 1 << 1,
+    ilka_write  = 1 << 2,
 
-inline ilka_ptr_t ilka_region_alloc(struct ilka_region *r, size_t n, size_t align)
-{
-    (void) r;
-    return (ilka_ptr_t) ilka_aligned_alloc(align, n);
-}
-inline void ilka_region_free(struct ilka_region *r, ilka_ptr_t ptr)
-{
-    (void) r;
-    free((void *) ptr);
-}
+    ilka_huge_tlb = 1 << 3,
+    ilka_populate = 1 << 3,
+};
 
-inline void ilka_region_unpin_read(struct ilka_region *r) { (void) r; }
-inline void ilka_region_pin_read(struct ilka_region *r) { (void) r; }
-inline void * ilka_region_read(struct ilka_region *r, ilka_ptr_t ptr)
-{
-    (void) r;
-    return (void *) ptr;
-}
+struct ilka_region * ilka_new_region(const char *file, enum ilka_open_mode mode);
+void ilka_close_region(struct ilka_region *r);
+void ilka_grow(struct ilka_region *r, size_t len);
 
-inline void * ilka_region_pin_write(struct ilka_region *r, ilka_ptr_t ptr)
-{
-    (void) r;
-    return (void *) ptr;
-}
-inline void ilka_region_unpin_write(struct ilka_region *r, void *ptr)
-{
-    (void) r;
-    (void) ptr;
-}
+void * ilka_read(struct ilka_region *r, ilka_ptr off, size_t len);
+void * ilka_write(struct ilka_region *r, ilka_ptr off, size_t len);
+
+
+// -----------------------------------------------------------------------------
+// epoch
+// -----------------------------------------------------------------------------
+
+typedef int ilka_epoch;
+
+ilka_epoch ilka_enter(struct ilka_region *r);
+void ilka_exit(struct ilka_region *r, ilka_epoch h);
+void ilka_world_stop(struct ilka_region *r);
+void ilka_world_resume(struct ilka_region *r);
+
+
+// -----------------------------------------------------------------------------
+// alloc
+// -----------------------------------------------------------------------------
+
+typedef uint64_t ilka_ptr;
+
+ilka_ptr ilka_alloc(struct ilka_region *r, size_t len);
+void ilka_free(struct ilka_region *r, ilka_ptr ptr, size_t len);
+void ilka_defer_free(struct ilka_region *r, ilka_ptr ptr, size_t len);

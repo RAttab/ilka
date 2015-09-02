@@ -82,7 +82,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 add_library(ilka SHARED
     src/ilka.c
     src/utils/utils.c
-    src/trie/trie.c)
+    src/region/region.c)
 
 
 #------------------------------------------------------------------------------#
@@ -115,4 +115,3 @@ endfunction()
 ilka_test(bits)
 ilka_test(bit_coder)
 ilka_test(key)
-ilka_test(trie_kv)
