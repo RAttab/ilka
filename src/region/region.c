@@ -7,6 +7,8 @@
 
 #include "file.c"
 #include "alloc.c"
+#include "journal.c"
+#include "persist.c"
 
 #include "region.h"
 #include "utils/arch.h"
@@ -36,18 +38,21 @@ struct meta
 {
     uint64_t magic;
     uint64_t version;
-    ilka_ptr alloc;
+    ilka_off_t alloc;
 };
 
 struct ilka_region
 {
     int fd;
+    const char* file;
     enum ilka_mode mode;
 
     ilka_slock lock;
 
     size_t len;
     void *start;
+
+    struct ilka_persist *persist;
     struct ilka_alloc *alloc;
 };
 
@@ -56,36 +61,40 @@ struct ilka_region
 // region
 // -----------------------------------------------------------------------------
 
-struct meta * region_meta(struct ilka_region *r)
+struct ilka_region * ilka_open(const char *file, enum ilka_open_mode mode)
 {
-    return ilka_read(r, 0, sizeof(struct meta));
-}
+    journal_recover(file);
 
-struct ilka_region * ilka_new_region(const char *file, enum ilka_open_mode mode)
-{
-    struct ilka_region *r = malloc(sizeof(struct ilka_region));
-    memset(r, 0, sizeof(struct ilka_region));
+    struct ilka_region *r = calloc(1, sizeof(struct ilka_region));
     slock_init(&r->lock);
 
+    r->file = file;
     r->mode = mode;
     r->fd = file_open(file, r->mode);
     r->len = file_grow(r->fd, ilka_min_size);
     mmap_map(r->fd, r->len);
 
-    struct meta * meta = region_meta(r);
+    const struct meta * meta = ilka_read(r, 0, sizeof(struct meta));
     if (meta->magic != ilka_magic) {
         if (!(r->mode & ilka_create)) ilka_error("invalid magic for file '%s'", file);
 
-        meta->magic = ilka_magic;
-        meta->version = ilka_version;
+        struct meta * m = ilka_write(r, 0, sizeof(struct meta));
+        m->magic = ilka_magic;
+        m->version = ilka_version;
     }
 
+    if (meta->version != ilka_version) {
+        ilka_error("invalid version for file '%s': %lu != %lu",
+                file, meta->version, ilka_version);
+    }
+
+    r->persist = persist_init(r);
     r->alloc = alloc_init(r, meta->alloc = ilka_alloc_start);
 
     return r;
 }
 
-void ilka_close_region(struct ilka_region *r)
+void ilka_close(struct ilka_region *r)
 {
     mmap_unmap(r->start, r->len);
     file_close(r->fd);
@@ -117,7 +126,7 @@ void ilka_grow(struct ilka_region *r, size_t len)
     slock_unlock(&meta->lock);
 }
 
-void * ilka_read(struct ilka_region *r, ilka_ptr off, size_t len)
+void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     size_t rlen = ilka_atomic_load(r->len, memory_order_relaxed);
     ilka_assert(off + len <= rlen,
@@ -128,13 +137,16 @@ void * ilka_read(struct ilka_region *r, ilka_ptr off, size_t len)
     return ilka_atomic_load(r->start, memory_order_relaxed) + off;
 }
 
-void * ilka_write(struct ilka_region *r, ilka_ptr off, size_t len)
+void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     void *ptr = ilka_read(r, off, len);
-
-    // todo: mark the pages for write-back.
-
+    persist_mark(r->persist, off, len);
     return ptr;
+}
+
+void ilka_save(struct ilka_region *r)
+{
+    persist_save(r->persist);
 }
 
 
@@ -142,12 +154,12 @@ void * ilka_write(struct ilka_region *r, ilka_ptr off, size_t len)
 // epoch
 // -----------------------------------------------------------------------------
 
-ilka_epoch ilka_enter(struct ilka_region *r)
+ilka_epoch_t ilka_enter(struct ilka_region *r)
 {
     ilka_todo();
 }
 
-void ilka_exit(struct ilka_region *r, ilka_epoch h)
+void ilka_exit(struct ilka_region *r, ilka_epoch_t h)
 {
     ilka_todo();
 }
@@ -167,17 +179,17 @@ void ilka_world_resume(struct ilka_region *r)
 // alloc
 // -----------------------------------------------------------------------------
 
-ilka_ptr ilka_alloc(struct ilka_region *r, size_t len)
+ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 {
-    return alloc_new(r->alloc, len);
+    return alloc_new(r->alloc, off, len);
 }
 
-void ilka_free(struct ilka_region *r, ilka_ptr ptr, size_t len)
+void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    return alloc_free(r->alloc, len);
+    return alloc_free(r->alloc, off, len);
 }
 
-void ilka_defer_free(struct ilka_region *r, ilka_ptr ptr, size_t len)
+void ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     ilka_todo();
 }

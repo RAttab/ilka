@@ -14,7 +14,7 @@ project(ilka)
 
 enable_testing()
 
-add_definitions("-Wall -Wextra -Werror -pedantic -g -O4")
+add_definitions("-Wall -Wextra -Werror -pedantic -g -O3")
 # add_definitions("-Wno-unused-parameter -Wno-unused-function")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

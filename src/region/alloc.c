@@ -21,20 +21,18 @@ static size_t alloc_min_pages = 1 * ILKA_PAGE_SIZE;
 struct ilka_alloc
 {
     struct ilka_region * region;
-    ilka_ptr start;
+    ilka_off_t start;
 };
 
 struct alloc_region
 {
     size_t init;
-    ilka_ptr current;
+    ilka_off_t current;
 };
 
-struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_ptr start)
+struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
 {
-    struct ilka_alloc * a = malloc(sizeof(struct ilka_alloc));
-    memset(a, 0, sizeof(struct ilka_alloc));
-
+    struct ilka_alloc * a = calloc(1, sizeof(struct ilka_alloc));
     a->region = r;
     a->start = start;
 
@@ -49,20 +47,20 @@ struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_ptr start)
     return a;
 }
 
-ilka_ptr alloc_new(struct ilka_alloc *a, size_t len)
+ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 {
     struct alloc_region * ar =
-        ilka_read(a->region, a->start, sizeof(struct alloc_region));
+        ilka_write(a->region, a->start, sizeof(struct alloc_region));
 
-    ilka_ptr ptr = ilka_atomic_fetch_add(ar->current, len, memory_order_relaxed);
-    ilka_grow(a->region, ptr + len);
-    return ptr;
+    ilka_off_t off = ilka_atomic_fetch_add(ar->current, len, memory_order_relaxed);
+    ilka_grow(a->region, off + len);
+    return off;
 }
 
-void alloc_free(struct ilka_alloc *a, ilka_ptr ptr, size_t len)
+void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
 {
     (void) a;
-    (void) ptr;
+    (void) off;
     (void) len;
 
     // noop for current implementation.
