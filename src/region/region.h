@@ -13,18 +13,19 @@
 // -----------------------------------------------------------------------------
 
 struct ilka_region;
+typedef uint64_t ilka_off_t;
+typedef uint16_t ilka_epoch_t;
 
-enum ilka_open_mode
+struct ilka_options
 {
-    ilka_open   = 1 << 0,
-    ilka_create = 1 << 1,
-    ilka_write  = 1 << 2,
+    bool open;
+    bool create;
+    bool writable;
+    bool huge_tlb;
+    bool populate;
+}
 
-    ilka_huge_tlb = 1 << 3,
-    ilka_populate = 1 << 3,
-};
-
-struct ilka_region * ilka_open(const char *file, enum ilka_open_mode mode);
+struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
 void ilka_close(struct ilka_region *r);
 void ilka_grow(struct ilka_region *r, size_t len);
 
@@ -33,25 +34,12 @@ void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len);
 
 void ilka_save(struct ilka_region *r);
 
-
-// -----------------------------------------------------------------------------
-// epoch
-// -----------------------------------------------------------------------------
-
-typedef uint16_t ilka_epoch_t;
-
-ilka_epoch_t ilka_enter(struct ilka_region *r);
-void ilka_exit(struct ilka_region *r, ilka_epoch_t h);
-void ilka_world_stop(struct ilka_region *r);
-void ilka_world_resume(struct ilka_region *r);
-
-
-// -----------------------------------------------------------------------------
-// alloc
-// -----------------------------------------------------------------------------
-
-typedef uint64_t ilka_off_t;
-
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len);
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len);
 void ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len);
+
+ilka_epoch_t ilka_enter(struct ilka_region *r);
+void ilka_exit(struct ilka_region *r, ilka_epoch_t h);
+
+void ilka_world_stop(struct ilka_region *r);
+void ilka_world_resume(struct ilka_region *r);

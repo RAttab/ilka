@@ -46,7 +46,7 @@ struct ilka_region
 {
     int fd;
     const char* file;
-    enum ilka_mode mode;
+    struct ilka_options options;
 
     ilka_slock lock;
 
@@ -63,7 +63,7 @@ struct ilka_region
 // region
 // -----------------------------------------------------------------------------
 
-struct ilka_region * ilka_open(const char *file, enum ilka_open_mode mode)
+struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
 {
     journal_recover(file);
 
@@ -71,14 +71,14 @@ struct ilka_region * ilka_open(const char *file, enum ilka_open_mode mode)
     slock_init(&r->lock);
 
     r->file = file;
-    r->mode = mode;
-    r->fd = file_open(file, r->mode);
+    r->options = *options;
+    r->fd = file_open(file, &r->options);
     r->len = file_grow(r->fd, ilka_min_size);
     mmap_map(r->fd, r->len);
 
     const struct meta * meta = ilka_read(r, 0, sizeof(struct meta));
     if (meta->magic != ilka_magic) {
-        if (!(r->mode & ilka_create)) ilka_error("invalid magic for file '%s'", file);
+        if (!r->options.create) ilka_error("invalid magic for file '%s'", file);
 
         struct meta * m = ilka_write(r, 0, sizeof(struct meta));
         m->magic = ilka_magic;

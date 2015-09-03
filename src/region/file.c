@@ -12,18 +12,18 @@
 // -----------------------------------------------------------------------------
 
 
-int file_open(const char *file, enum ilka_open_mode mode)
+int file_open(const char *file, struct ilka_options *options)
 {
-    ilka_assert(mode & (ilka_open | ilka_create),
+    ilka_assert(options->open || options->create),
             "must provide 'ilka_open' or 'ilka_create' to open '%s'", file);
 
     int flags = O_LARGEFILE | O_NOATIME;
 
-    if (mode & ilka_create) {
+    if (options->create) {
         flags |= O_CREAT;
-        flags |= mode & ilka_open ? 0 | O_EXCL;
+        flags |= options->open ? 0 | O_EXCL;
     }
-    flags |= mode & ilka_write ? O_RDWR : O_RDONLY;
+    flags |= options->writable ? O_RDWR : O_RDONLY;
 
     int fd = open(file, flags);
     if (fd == -1) ilka_error_errno("unable to open '%s'", file);

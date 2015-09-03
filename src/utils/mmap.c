@@ -9,14 +9,14 @@
 // mmap
 // -----------------------------------------------------------------------------
 
-void * mmap_map(int fd, size_t len, enum ilka_mode mode)
+void * mmap_map(int fd, size_t len, struct ilka_options *options)
 {
     int prot = PROT_READ;
-    if (mode & ilka_write) prot |= PROT_WRITE;
+    if (options->writable) prot |= PROT_WRITE;
 
     int flags = MAP_PRIVATE;
-    if (mode & ilka_huge_tlb) flags |= MAP_HUGETLB;
-    if (mode & ilka_populate) flags |= MAP_POPULATE;
+    if (options->huge_tlb) flags |= MAP_HUGETLB;
+    if (options->populate) flags |= MAP_POPULATE;
 
     void * start = mmap(NULL, len, prot, flags, fd, 0);
     if (start == MAP_FAILED) {
