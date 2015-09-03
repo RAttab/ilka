@@ -23,13 +23,18 @@ struct persist_node
 struct ilka_persist
 {
     struct ilka_region *region;
+
+    ilka_slock lock;
     struct persist_node *head;
 };
 
 struct ilka_persist * persist_init(struct ilka_region *r)
 {
     struct ilka_persist *p = calloc(1, sizeof(struct ilka_persist));
+
     p->region = r;
+    slock_init(&p->lock);
+
     return p;
 }
 
@@ -50,6 +55,7 @@ void persist_save(struct ilka_persist *p)
     struct persist_node *head = ilka_atomic_xchg(&p->head, NULL, memory_order_relaxed);
     if (!head) return;
 
+    slock_lock(&p->lock);
     ilka_world_stop(p->region);
 
     pid_t pid = fork();
@@ -57,6 +63,7 @@ void persist_save(struct ilka_persist *p)
 
     if (pid != 0) {
         ilka_world_resume(p->region);
+        slock_unlock(&p->lock);
 
         while (head) {
             struct persist_node *next = head->next;

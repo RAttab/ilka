@@ -39,6 +39,7 @@ struct meta
     uint64_t magic;
     uint64_t version;
     ilka_off_t alloc;
+    ilka_off_t epoch;
 };
 
 struct ilka_region
@@ -54,6 +55,7 @@ struct ilka_region
 
     struct ilka_persist *persist;
     struct ilka_alloc *alloc;
+    struct ilka_epoch *epoch;
 };
 
 
@@ -90,6 +92,7 @@ struct ilka_region * ilka_open(const char *file, enum ilka_open_mode mode)
 
     r->persist = persist_init(r);
     r->alloc = alloc_init(r, meta->alloc = ilka_alloc_start);
+    r->epoch = epoch_init(r, &meta->epoch);
 
     return r;
 }
@@ -132,8 +135,6 @@ void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
     ilka_assert(off + len <= rlen,
             "invalid read pointer: %lu + %lu > %lu", off, len, rlen);
 
-    // todo: check that we're in an epoch.
-
     return ilka_atomic_load(r->start, memory_order_relaxed) + off;
 }
 
@@ -156,22 +157,22 @@ void ilka_save(struct ilka_region *r)
 
 ilka_epoch_t ilka_enter(struct ilka_region *r)
 {
-    ilka_todo();
+    return epoch_enter(r->epoch);
 }
 
-void ilka_exit(struct ilka_region *r, ilka_epoch_t h)
+void ilka_exit(struct ilka_region *r, ilka_epoch_t epoch)
 {
-    ilka_todo();
+    return epoch_exit(r->epoch, epoch);
 }
 
 void ilka_world_stop(struct ilka_region *r)
 {
-    ilka_todo();
+    epoch_world_stop(r->epoch);
 }
 
 void ilka_world_resume(struct ilka_region *r)
 {
-    ilka_todo();
+    epoch_world_resume(r->epoch);
 }
 
 
@@ -191,5 +192,5 @@ void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 
 void ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    ilka_todo();
+    epoch_defer_free(r->epoch, off, len);
 }

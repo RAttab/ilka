@@ -38,7 +38,7 @@ void ilka_save(struct ilka_region *r);
 // epoch
 // -----------------------------------------------------------------------------
 
-typedef int ilka_epoch_t;
+typedef uint16_t ilka_epoch_t;
 
 ilka_epoch_t ilka_enter(struct ilka_region *r);
 void ilka_exit(struct ilka_region *r, ilka_epoch_t h);
