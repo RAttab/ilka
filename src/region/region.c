@@ -150,36 +150,6 @@ void ilka_save(struct ilka_region *r)
     persist_save(r->persist);
 }
 
-
-// -----------------------------------------------------------------------------
-// epoch
-// -----------------------------------------------------------------------------
-
-ilka_epoch_t ilka_enter(struct ilka_region *r)
-{
-    return epoch_enter(r->epoch);
-}
-
-void ilka_exit(struct ilka_region *r, ilka_epoch_t epoch)
-{
-    return epoch_exit(r->epoch, epoch);
-}
-
-void ilka_world_stop(struct ilka_region *r)
-{
-    epoch_world_stop(r->epoch);
-}
-
-void ilka_world_resume(struct ilka_region *r)
-{
-    epoch_world_resume(r->epoch);
-}
-
-
-// -----------------------------------------------------------------------------
-// alloc
-// -----------------------------------------------------------------------------
-
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 {
     return alloc_new(r->alloc, off, len);
@@ -193,4 +163,24 @@ void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 void ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     epoch_defer_free(r->epoch, off, len);
+}
+
+ilka_epoch_t ilka_enter(struct ilka_region *r)
+{
+    return epoch_enter(r->epoch);
+}
+
+void ilka_exit(struct ilka_region *r, ilka_epoch_t epoch)
+{
+    epoch_exit(r->epoch, epoch);
+}
+
+void ilka_world_stop(struct ilka_region *r)
+{
+    epoch_world_stop(r->epoch);
+}
+
+void ilka_world_resume(struct ilka_region *r)
+{
+    epoch_world_resume(r->epoch);
 }
