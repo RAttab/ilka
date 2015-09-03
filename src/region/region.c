@@ -6,9 +6,11 @@
 #pragma once
 
 #include "file.c"
+#include "mmap.c"
 #include "alloc.c"
 #include "journal.c"
 #include "persist.c"
+#include "epoch.c"
 
 #include "region.h"
 #include "utils/arch.h"
