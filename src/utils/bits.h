@@ -14,8 +14,7 @@
 // builtin
 // -----------------------------------------------------------------------------
 
-/* The ctz and clz builtins are undefined for 0 because they're undefined on
- * x86 */
+// The ctz and clz builtins are undefined for 0 because they're undefined on x86
 inline size_t clz(uint64_t x) { return x ? __builtin_clzll(x) : 64; }
 inline size_t ctz(uint64_t x) { return x ? __builtin_ctzll(x) : 64; }
 inline size_t pop(uint64_t x) { return __builtin_popcountll(x); }

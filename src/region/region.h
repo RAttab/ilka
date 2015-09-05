@@ -27,7 +27,7 @@ struct ilka_options
 
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
 void ilka_close(struct ilka_region *r);
-void ilka_grow(struct ilka_region *r, size_t len);
+ilka_off_t ilka_grow(struct ilka_region *r, size_t len);
 
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len);
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len);

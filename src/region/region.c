@@ -105,30 +105,33 @@ void ilka_close(struct ilka_region *r)
     file_close(r->fd);
 }
 
-void ilka_grow(struct ilka_region *r, size_t len)
+ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
 {
-    // round up to nearest page.
-    size_t modulo = len & (ILKA_PAGE_SIZE - 1);
-    if (modulo) len += (ILKA_PAGE_SIZE - modulo);
+    len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
     if (ilka_atomic_load(&r->len, memory_order_relaxed) >= len) return;
 
     struct meta * meta = region_meta(r);
     slock_lock(&meta->lock);
 
-    file_grow(r, len);
-    if (!mmap_remap_soft(r->start, r->len, len)) {
+    size_t old_len = r->len;
+    size_t new_len = old + len;
+
+    file_grow(r->fd, new_len);
+    if (!mmap_remap_soft(r->start, old_len, new_len)) {
         ilka_world_stop(r);
 
-        new = mmap_remap_hard(r->start, r->len, len);
-        ilka_atomic_store(&r->start, new, memory_order_relaxed);
+        new_start = mmap_remap_hard(r->start, old_len, new_len);
+        ilka_atomic_store(&r->start, new_start, memory_order_relaxed);
 
         ilka_world_resume(r);
     }
 
-    ilka_atomic_store(&r->len, len, memory_order_relaxed);
+    ilka_atomic_store(&r->len, new_len, memory_order_relaxed);
 
     slock_unlock(&meta->lock);
+
+    return old_len;
 }
 
 void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
