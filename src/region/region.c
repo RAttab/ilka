@@ -101,6 +101,12 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
 
 void ilka_close(struct ilka_region *r)
 {
+    ilka_save(r);
+
+    epoch_close(r->epoch);
+    alloc_close(r->alloc);
+    persist_close(r->persist);
+
     mmap_unmap(r->start, r->len);
     file_close(r->fd);
 }
@@ -112,7 +118,7 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     if (ilka_atomic_load(&r->len, memory_order_relaxed) >= len) return;
 
     struct meta * meta = region_meta(r);
-    slock_lock(&meta->lock);
+    slock_lock(&r->lock);
 
     size_t old_len = r->len;
     size_t new_len = old + len;
@@ -129,7 +135,7 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
 
     ilka_atomic_store(&r->len, new_len, memory_order_relaxed);
 
-    slock_unlock(&meta->lock);
+    slock_unlock(&r->lock);
 
     return old_len;
 }

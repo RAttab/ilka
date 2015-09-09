@@ -57,6 +57,11 @@ struct ilka_epoch * epoch_init(struct ilka_region *r, ilka_off_t *off)
     return e;
 }
 
+void epoch_close(struct ilka_epoch *e)
+{
+    free(e);
+}
+
 void epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
 {
     ilka_off_t node_off = ilka_alloc(sizeof(struct epoch_node));

@@ -40,6 +40,18 @@ struct ilka_persist * persist_init(struct ilka_region *r)
     return p;
 }
 
+void persist_close(struct ilka_persist *p)
+{
+    struct persist_node *head = p->head;
+    while (head) {
+        struct persist_node *next = head->next;
+        free(head);
+        head = next;
+    }
+
+    free(p);
+}
+
 void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
 {
     struct persist_node *node = calloc(1, sizeof(struct persist_node));

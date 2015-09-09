@@ -210,6 +210,11 @@ struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
     return a;
 }
 
+void alloc_close(struct ilka_alloc *alloc)
+{
+    free(alloc);
+}
+
 size_t _alloc_bucket(size_t *len)
 {
     *len = *len < alloc_bucket_min_len ? alloc_bucket_min : ceil_pow2(*len);
