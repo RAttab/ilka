@@ -14,7 +14,7 @@
 static const size_t alloc_min_pages = 1 * ILKA_PAGE_SIZE;
 
 #define alloc_bucket_min_len 8UL
-#define alloc_bucket_max_len 512UL;
+#define alloc_bucket_max_len 2048UL;
 #define alloc_buckets                           \
     __builtin_popcountll(                       \
             ((alloc_bucket_min_len << 1) - 1) & \
@@ -45,6 +45,26 @@ void _alloc_page_init(struct alloc_page *a, size_t len)
     a->cap = (len - sizeof(struct alloc_page)) / sizeof(struct alloc_page_node);
 }
 
+void _alloc_page_shift(struct ilka_region *r, struct alloc_page *a)
+{
+    if (!a->next || a->len == a->cap) return;
+    struct alloc_page *next = ilka_write(a->region, a->next, ILKA_PAGE_SIZE);
+    if (!next->len) return;
+
+    size_t avail = a->cap - a->len;
+    size_t n = avail < next->len ? next->len - avail : next->len;
+
+    for (size_t i = 0; i < n; i++)
+        a->pages[a->len + i] = next->pages[i];
+    a->len += n;
+
+    for (size_t i = 0; i < next->len - n; i++)
+        next->pages[i] = next->pages[i + n];
+    next->len -= n;
+
+    _alloc_page_shift(r, next);
+}
+
 ilka_off_t _alloc_page_new(struct ilka_region *r, struct alloc_page *a, size_t len)
 {
     ilka_assert(len > alloc_bucket_max_len,
@@ -72,6 +92,8 @@ ilka_off_t _alloc_page_new(struct ilka_region *r, struct alloc_page *a, size_t l
 
     for (; i + 1 < a->len; ++i) a->pages[i] = a->pages[i + 1];
     a->len--;
+
+    _alloc_page_shift(r, a);
 
     return result.off;
 }
@@ -114,6 +136,9 @@ void _alloc_page_free(
         for (; i+1 < a->len; ++i) a->pages[i] = a->pages[i+1];
 
         a->len--;
+
+        _alloc_page_shift(r, a);
+
         return;
     }
 
@@ -205,7 +230,7 @@ ilka_off_t _alloc_bucket_fill(
     }
 
     ilka_off_t start = page + len;
-    ilka_off_t end = start + ILKA_PAGE_SIZE;
+    ilka_off_t end = start + (nodes * len);
 
     for (ilka_off_t node = start; node + len < end; node += len) {
         ilka_off_t *pnode = ilka_write(a->region, node, sizeof(ilka_off_t));
@@ -234,7 +259,10 @@ ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 
     ilka_off_t head = ar->buckets[bucket];
     do {
-        if (!head) return _alloc_bucket_fill(a, ar, bucket, len);
+        if (!head) {
+            head = _alloc_bucket_fill(a, ar, bucket, len);
+            break;
+        }
 
         const ilka_off_t *next = ilka_read(a->regin, head, sizeof(ilka_off_t));
     } while (!ilka_cmp_xchg(&ar->buckets[bucket], &head, *next, memory_order_relaxed));
