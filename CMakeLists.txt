@@ -37,6 +37,10 @@ elseif (ILKA_FLAG_C99)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
 endif()
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_GNU_SOURCE")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FILE_OFFSET_BITS=64")
+
 include(CheckCXXCompilerFlag)
 
 check_cxx_compiler_flag(-std=c++11 ILKA_FLAG_CPP11)
@@ -52,6 +56,7 @@ endif()
 #------------------------------------------------------------------------------#
 # LIBRARIES
 #------------------------------------------------------------------------------#
+
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules")
 
@@ -103,13 +108,12 @@ install(
 #------------------------------------------------------------------------------#
 
 add_library(ilka_check SHARED tests/check.c)
+target_link_libraries(ilka_check ilka m rt ${CHECK_LIBRARIES})
 
 function(ilka_test name)
-    if(CMAKE_SOURCE_DIR STREQUAL ${PROJECT_SOURCE_DIR})
-        add_executable(${name}_test tests/${name}_test.c)
-        target_link_libraries(${name}_test ilka ilka_check ${CHECK_LIBRARIES})
-        add_test(${name} bin/${name}_test)
-    endif()
+    add_executable(${name}_test tests/${name}_test.c)
+    target_link_libraries(${name}_test ilka_check)
+    add_test(${name} bin/${name}_test)
 endfunction()
 
 ilka_test(bits)
