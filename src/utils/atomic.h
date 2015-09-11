@@ -35,8 +35,8 @@ enum memory_order
 #define ilka_atomic_load(p, m)     __atomic_load_n(p, m)
 #define ilka_atomic_store(p, v, m) __atomic_store_n(p, v, m)
 #define ilka_atomic_xchg(p, v, m)  __atomic_exchange_n(p, v, m)
-#define ilka_atomic_cmp_xchg(p, exp, val, m, m)                 \
-    __atomic_compare_exchange_n(p, exp, val, false, s, f)
+#define ilka_atomic_cmp_xchg(p, exp, val, m)                    \
+    __atomic_compare_exchange_n(p, exp, val, false, m, memory_order_relaxed)
 
 #define ilka_atomic_fetch_add(p, v, m)  __atomic_fetch_add(p, v, m)
 #define ilka_atomic_fetch_sub(p, v, m)  __atomic_fetch_sub(p, v, m)

@@ -4,6 +4,7 @@
 */
 
 #include <sys/mman.h>
+#include <errno.h>
 
 // -----------------------------------------------------------------------------
 // mmap
@@ -29,7 +30,7 @@ void * mmap_map(int fd, size_t len, struct ilka_options *options)
 void mmap_unmap(void *start, size_t len)
 {
     if (munmap(start, len) == -1) {
-        ilka_error_errno("unable to unmap '%lu' with length '%lu'", start, len);
+        ilka_error_errno("unable to unmap '%p' with length '%lu'", start, len);
     }
 }
 
@@ -37,16 +38,18 @@ bool mmap_remap_soft(void *start, size_t old, size_t new)
 {
     void * ret = mremap(start, old, new, 0);
     if (ret != MAP_FAILED) return true;
-    if (errno == ENOMMEM) return false;
+    if (errno == ENOMEM) return false;
 
-    ilka_error_errno("unable to soft remap '%lu' from '%lu' to '%lu'", start, old, new);
+    ilka_error_errno("unable to soft remap '%p' from '%lu' to '%lu'",
+            start, old, new);
 }
 
 void * mmap_remap_hard(void *start, size_t old, size_t new)
 {
     void * ret = mremap(start, old, new, MREMAP_MAYMOVE);
     if (ret == MAP_FAILED) {
-        ilka_error_errno("unable to hard remap '%lu' from '%lu' to '%lu'", start, old, new);
+        ilka_error_errno("unable to hard remap '%p' from '%lu' to '%lu'",
+                start, old, new);
     }
 
     return ret;

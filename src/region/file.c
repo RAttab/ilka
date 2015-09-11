@@ -3,9 +3,14 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include <fcntl.h>
-#include <unitstd.h>
+#include "region.h"
+#include "utils/error.h"
+
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 
 // -----------------------------------------------------------------------------
 // file
@@ -14,18 +19,18 @@
 
 int file_open(const char *file, struct ilka_options *options)
 {
-    ilka_assert(options->open || options->create),
+    ilka_assert(options->open || options->create,
             "must provide 'ilka_open' or 'ilka_create' to open '%s'", file);
 
-    int flags = O_LARGEFILE | O_NOATIME;
+    int flags = O_NOATIME;
 
     if (options->create) {
         flags |= O_CREAT;
-        flags |= options->open ? 0 | O_EXCL;
+        flags |= options->open ? 0 : O_EXCL;
     }
     flags |= options->writable ? O_RDWR : O_RDONLY;
 
-    int fd = open(file, flags);
+    int fd = open(file, flags, O_RDONLY);
     if (fd == -1) ilka_error_errno("unable to open '%s'", file);
 
     return fd;
@@ -52,7 +57,7 @@ size_t file_grow(int fd, size_t len)
     size_t old = file_len(fd);
     if (old >= len) return old;
 
-    ret = ftruncate(fd, len);
+    int ret = ftruncate(fd, len);
     if (ret == -1) ilka_error_errno("unable to truncate fd '%d'", fd);
 
     return len;

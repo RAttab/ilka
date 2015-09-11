@@ -7,8 +7,7 @@
    executed when the last thread leaves an epoch.
 */
 
-#include "epoch.h"
-
+#include "region.h"
 
 // -----------------------------------------------------------------------------
 // epoch
@@ -24,67 +23,61 @@ union epoch_state
     } unpacked;
 };
 
-struct ilka_epoch
-{
-    struct ilka_region *region;
-
-    ilka_off_t off;
-    union epoch_state state;
-};
-
 struct epoch_node
 {
     size_t len;
     ilka_off_t off;
-    ilka_off_t next;
-}
-
-struct epoch_region
-{
-    ilka_off_t epochs[2];
+    struct epoch_node *next;
 };
 
-struct ilka_epoch * epoch_init(struct ilka_region *r, ilka_off_t *off)
+struct ilka_epoch
 {
-    struct ilka_epoch *e = calloc(1, struct(ilka_epoch));
+    struct ilka_region *region;
 
-    if (!*off)
-        *off = ilka_alloc(r, sizeof(struct epoch_region));
+    union epoch_state state;
+    struct epoch_node *defers[2];
+};
 
+struct ilka_epoch * epoch_init(struct ilka_region *r)
+{
+    struct ilka_epoch *e = calloc(1, sizeof(struct ilka_epoch));
     e->region = r;
-    e->off = *off;
-
     return e;
 }
 
 void epoch_close(struct ilka_epoch *e)
 {
+    for (size_t i = 0; i < 2; ++i) {
+
+        struct epoch_node *head = e->defers[i];
+        while (head) {
+            struct epoch_node *next = head->next;
+            free(head);
+            head = next;
+        }
+    }
+
     free(e);
 }
 
 void epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
 {
-    ilka_off_t node_off = ilka_alloc(sizeof(struct epoch_node));
-    struct epoch_node *node =
-        ilka_write(e->region, node_off, sizeof(struct epoch_node));
-    *node = {off, len, 0};
-
-    struct epoch_region *region =
-        ilka_write(e->region, e->off, sizeof(struct epoch_region));
+    struct epoch_node *node = malloc(sizeof(struct epoch_node));
+    *node = (struct epoch_node) {off, len, 0};
 
     union epoch_state state;
     state.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
 
-    size_t i = state.epoch & 0x1;
-    ilka_off_t old = region->epochs[i];
+    size_t i = state.unpacked.epoch & 0x1;
+    struct epoch_node *old = e->defers[i];
     do {
         node->next = old;
-    } while (!ilka_atomic_cmp_xchg(&region->epochs[i], old, node_off, memory_order_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&e->defers[i], &old, node, memory_order_relaxed));
 }
 
 ilka_epoch_t epoch_enter(struct ilka_epoch *e)
 {
-    ilka_epoch_t epoch;
+    ilka_epoch_t epoch = 0;
     union epoch_state old, new;
 
   restart:
@@ -101,14 +94,14 @@ ilka_epoch_t epoch_enter(struct ilka_epoch *e)
 
         new.unpacked.epochs[epoch & 0x1]++;
 
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, old.packed, new.packed, memory_order_acquire));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_acquire));
 
     return epoch;
 }
 
 void epoch_exit(struct ilka_epoch *e, ilka_epoch_t epoch)
 {
-    ilka_off_t defers = 0;
+    struct epoch_node *defers = NULL;
 
     union epoch_state old, new;
     old.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
@@ -117,22 +110,17 @@ void epoch_exit(struct ilka_epoch *e, ilka_epoch_t epoch)
         new.packed = old.packed;
         uint16_t count = --new.unpacked.epochs[epoch & 0x1];
 
-        if (!defers && !count && epoch != new.unpacked.epoch) {
-            struct epoch_region *region =
-                ilka_write(e->region, e->off, sizeof(struct epoch_region));
+        if (!defers && !count && epoch != new.unpacked.epoch)
+            defers = ilka_atomic_xchg(&e->defers[epoch & 0x1], NULL, memory_order_relaxed);
 
-            defers = ilka_atomic_xchg(&region->epochs[epoch & 0x1], NULL, memory_order_relaxed);
-        }
-
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, old.packed, new.packed, memory_order_release));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_release));
 
     while (defers) {
-        struct epoch_node node =
-            *ilka_read(e->region, defers, sizeof(struct epoch_node));
+        ilka_free(e->region, defers->off, defers->len);
 
-        ilka_free(node.off, node.len);
-        ilka_free(defers);
-        defers = node.next;
+        struct epoch_node *next = defers->next;
+        free(defers);
+        defers = next;
     }
 }
 
@@ -144,7 +132,7 @@ void epoch_world_stop(struct ilka_epoch *e)
     do {
         new.packed = old.packed;
         new.unpacked.lock++;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, old.packed, new.packed, memory_order_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_relaxed));
 
     while (old.unpacked.epochs[0] || old.unpacked.epochs[1])
         old.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
@@ -160,5 +148,5 @@ void epoch_world_resume(struct ilka_epoch *e)
     do {
         new.packed = old.packed;
         new.unpacked.lock--;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, old.packed, new.packed, memory_order_release));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_release));
 }

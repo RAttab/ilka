@@ -5,6 +5,8 @@
 
 #include "region.h"
 
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 // -----------------------------------------------------------------------------
@@ -12,7 +14,7 @@
 // -----------------------------------------------------------------------------
 
 static const size_t journal_min_size = 64;
-static const char* journal_ext = ".journal";
+static const char *journal_ext = ".journal";
 static const uint64_t journal_magic = 0xB0E9C4032E414824;
 
 // -----------------------------------------------------------------------------
@@ -29,16 +31,17 @@ struct ilka_journal
 {
     struct ilka_region *region;
     const char *file;
+    char *journal_file;
 
     struct journal_node *nodes;
     size_t len;
     size_t cap;
 };
 
-const char* _journal_file(const char* file)
+char * _journal_file(const char* file)
 {
     size_t n = strlen(file) + strlen(journal_ext) + 1;
-    const char* buf = malloc(n);
+    char *buf = malloc(n);
     snprintf(buf, n, "%s%s", file, journal_ext);
     return buf;
 }
@@ -49,6 +52,7 @@ struct ilka_journal * journal_init(struct ilka_region *r, const char* file)
 
     j->region = r;
     j->file = file;
+    j->journal_file = _journal_file(file);
     j->cap = journal_min_size;
     j->nodes = calloc(j->cap, sizeof(struct journal_node));
 
@@ -98,53 +102,53 @@ size_t _journal_next(struct ilka_journal *j, size_t i, struct journal_node *node
     return i;
 }
 
-void _journal_write(int fd, const void* ptr, size_t len)
+void _journal_write(int fd, const void *ptr, size_t len)
 {
     ssize_t ret = write(fd, ptr, len);
     if (ret == -1) ilka_error_errno("unable to write to journal");
-    if (ret != len) ilka_error("incomplete write to journal: %lu != %lu", ret, len);
+    if ((size_t) ret != len)
+        ilka_error("incomplete write to journal: %lu != %lu", ret, len);
 }
 
 void _journal_write_log(struct ilka_journal *j)
 {
-    const char* file = _journal_file(j->file);
+    const char *file = j->journal_file;
 
-    int fd = open(j->file, O_CREAT | O_EXCL | O_APPEND);
+    int fd = open(j->file, O_CREAT | O_EXCL | O_APPEND, O_WRONLY);
     if (fd == -1) ilka_error_errno("unable to create journal: %s", file);
 
     struct journal_node node;
     size_t i = _journal_next(j, 0, &node);
     for (; i < j->len; i = _journal_next(j, i, &node)) {
         _journal_write(fd, &node, sizeof(node));
-        _journal_write(fd, ilka_read(j, node.off, node.len), node.len);
+        _journal_write(fd, ilka_read(j->region, node.off, node.len), node.len);
     }
 
-    node = {0, 0};
-    _journal_write(fd, &node, sizeof(node);
+    node = (struct journal_node) {0, 0};
+    _journal_write(fd, &node, sizeof(node));
 
     if (fdatasync(fd) == -1) ilka_error_errno("unable to fsync journal: %s", file);
 
-    journal_write(fd, &journal_magic, sizeof(journal_magic));
+    _journal_write(fd, &journal_magic, sizeof(journal_magic));
     if (fdatasync(fd) == -1) ilka_error_errno("unable to fsync journal: %s", file);
 
     if (close(fd) == -1) ilka_error_errno("unable to close journal: %s", file);
-
-    free(file);
 }
 
 void _journal_write_region(struct ilka_journal *j)
 {
-    int fd = open(j->file, 0);
+    int fd = open(j->file, 0, O_WRONLY);
     if (fd == -1) ilka_error_errno("unable to open region: %s", j->file);
 
     struct journal_node node;
     size_t i = _journal_next(j, 0, &node);
     for (; i < j->len; i = _journal_next(j, i, &node)) {
-        const void *ptr = ilka_read(j, node.off, node.len);
+        const void *ptr = ilka_read(j->region, node.off, node.len);
 
         ssize_t ret = pwrite(fd, ptr, node.len, node.off);
         if (ret == -1) ilka_error_errno("unable to write to region");
-        if (ret != len) ilka_error("incomplete write to region: %lu != %lu", ret, len);
+        if ((size_t) ret != node.len)
+            ilka_error("incomplete write to region: %lu != %lu", ret, node.len);
     }
 
     if (fdatasync(fd) == -1) ilka_error_errno("unable to fsync region: %s", j->file);
@@ -155,14 +159,17 @@ void journal_finish(struct ilka_journal *j)
 {
     _journal_write_log(j);
     _journal_write_region(j);
-    if (unlink(j->journal_file) == -1);
+
+    if (unlink(j->journal_file) == -1)
+        ilka_error_errno("unable to unlink journal: %s", j->journal_file);
 
     free(j->nodes);
+    free(j->journal_file);
 }
 
 int _journal_check(const char *file)
 {
-    int fd = open(file, 0);
+    int fd = open(file, 0, O_RDONLY);
     if (fd == -1) {
         if (errno == ENOENT) return -1;
         ilka_error_errno("unable to open journal: %s", file);
@@ -174,7 +181,8 @@ int _journal_check(const char *file)
     if (len > sizeof(magic)) {
         ssize_t ret = pread(fd, &magic, sizeof(magic), len - sizeof(magic));
         if (ret == -1) ilka_error_errno("unable to read from journal");
-        if (ret != len) ilka_error("incomplete read from journal: %lu != %lu", ret, sizeof(magic));
+        if ((size_t) ret != len)
+            ilka_error("incomplete read from journal: %lu != %lu", ret, sizeof(magic));
     }
 
     if (magic != journal_magic) {
@@ -190,26 +198,27 @@ int _journal_check(const char *file)
     return fd;
 }
 
-void _journal_read(int fd, void* ptr, size_t len)
+void _journal_read(int fd, void *ptr, size_t len)
 {
     ssize_t ret = read(fd, ptr, len);
     if (ret == -1) ilka_error_errno("unable to read from journal");
-    if (ret != len) ilka_error("incomplete read from journal: %lu != %lu", ret, len);
+    if ((size_t) ret != len)
+        ilka_error("incomplete read from journal: %lu != %lu", ret, len);
 }
 
 void journal_recover(const char *file)
 {
-    const char* journal_file = _journal_file(file);
+    char *journal_file = _journal_file(file);
     int journal_fd = _journal_check(journal_file);
     if (journal_fd == -1) goto done;
 
-    int region_fd = open(file, 0);
-    if (region_ds == -1) ilka_error_errno("unable to open region: %s", file);
+    int region_fd = open(file, 0, O_WRONLY);
+    if (region_fd == -1) ilka_error_errno("unable to open region: %s", file);
 
     struct journal_node node = {0, 0};
 
     size_t cap = ILKA_PAGE_SIZE;
-    void* buf = malloc(cap);
+    void *buf = malloc(cap);
 
     while (true) {
         _journal_read(journal_fd, &node, sizeof(node));
@@ -223,9 +232,10 @@ void journal_recover(const char *file)
 
         _journal_read(journal_fd, buf, node.len);
 
-        ssize_t ret = pwrite(fd, buf, node.len, node.off);
+        ssize_t ret = pwrite(region_fd, buf, node.len, node.off);
         if (ret == -1) ilka_error_errno("unable to write to region: %s", file);
-        if (ret != len) ilka_error("incomplete write to region: %lu != %lu", ret, len);
+        if ((size_t) ret != node.len)
+            ilka_error("incomplete write to region: %lu != %lu", ret, node.len);
     }
 
     free(buf);

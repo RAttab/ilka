@@ -25,16 +25,18 @@ struct persist_node
 struct ilka_persist
 {
     struct ilka_region *region;
+    const char *file;
 
     ilka_slock lock;
     struct persist_node *head;
 };
 
-struct ilka_persist * persist_init(struct ilka_region *r)
+struct ilka_persist * persist_init(struct ilka_region *r, const char *file)
 {
     struct ilka_persist *p = calloc(1, sizeof(struct ilka_persist));
 
     p->region = r;
+    p->file = file;
     slock_init(&p->lock);
 
     return p;
@@ -64,7 +66,7 @@ void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
     } while (ilka_atomic_cmp_xchg(&p->head, head, node, memory_order_relaxed));
 }
 
-void _persist_wait(struct ilka_persist *p, pid_t pid) {
+void _persist_wait(pid_t pid) {
     int status;
     do {
         if (waitpid(pid, &status, WUNTRACED) == -1) {
@@ -101,12 +103,12 @@ void persist_save(struct ilka_persist *p)
             head = next;
         }
 
-        _persist_wait(p, pid);
+        _persist_wait(pid);
         slock_unlock(&p->lock);
     }
 
     else {
-        struct ilka_journal *j = journal_init(p->region->file);
+        struct ilka_journal *j = journal_init(p->region, p->file);
 
         while (head) {
             journal_add(j, head->off, head->len);
