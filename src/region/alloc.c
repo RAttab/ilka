@@ -212,8 +212,8 @@ struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
 
         ar->init = 1;
 
-        size_t pages_len = alloc_min_pages;
-        pages_len -= (sizeof(struct alloc_region) - sizeof(struct alloc_page));
+        size_t pages_len =
+                (alloc_min_pages * ILKA_PAGE_SIZE) - sizeof(struct alloc_region);
         _alloc_page_init(_alloc_pages(ar), pages_len);
     }
 
