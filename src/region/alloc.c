@@ -71,7 +71,7 @@ ilka_off_t _alloc_page_new(struct ilka_region *r, struct alloc_page *a, size_t l
             "page allocation is too small: %lu > %lu", len, alloc_bucket_max_len);
     len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
-    struct alloc_page result = {0, -1UL};
+    struct alloc_page_node result = {0, -1UL};
 
     size_t i = 0;
     for (; i < a->len && result.len != len; ++i) {
@@ -161,11 +161,11 @@ void _alloc_page_free(
 
     struct alloc_page *next;
     if (!a->next) {
-        a->next = ilka_grow(r, ILKA_PAGE);
-        next = ilka_write(r, a->next, ILKA_PAGE);
-        _alloc_page_init(next, ILKA_PAGE);
+        a->next = ilka_grow(r, ILKA_PAGE_SIZE);
+        next = ilka_write(r, a->next, ILKA_PAGE_SIZE);
+        _alloc_page_init(next, ILKA_PAGE_SIZE);
     }
-    else next = ilka_write(r, a->next, ILKA_PAGE);
+    else next = ilka_write(r, a->next, ILKA_PAGE_SIZE);
 
     _alloc_page_free(r, next, off, len);
 }
@@ -179,12 +179,12 @@ struct ilka_alloc
 {
     struct ilka_region * region;
     ilka_off_t start;
+    ilka_slock lock;
 };
 
 struct alloc_region
 {
     size_t init;
-    ilka_slock lock;
 
     ilka_off_t buckets[alloc_buckets];
     struct alloc_page pages;
@@ -195,12 +195,12 @@ struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
     struct ilka_alloc * a = calloc(1, sizeof(struct ilka_alloc));
     a->region = r;
     a->start = start;
+    slock_init(&a->lock);
 
     struct alloc_region * ar = ilka_read(a->region, a->start, alloc_min_pages);
 
     if (!ar->init) {
         ar->init = 1;
-        slock_init(&ar->lock);
 
         size_t pages_len = alloc_min_pages;
         pages_len -= (sizeof(struct alloc_region) - sizeof(struct alloc_page));
@@ -280,7 +280,7 @@ void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
     struct alloc_region *ar = ilka_write(a->region, a->start, alloc_min_pages);
 
     if (len > alloc_bucket_max_len) {
-        _alloc_page_new(a->region, &ar->pages, off, len);
+        _alloc_page_free(a->region, &ar->pages, off, len);
         return;
     }
 

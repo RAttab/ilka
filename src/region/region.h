@@ -9,12 +9,8 @@
 
 
 // -----------------------------------------------------------------------------
-// region
+// options
 // -----------------------------------------------------------------------------
-
-struct ilka_region;
-typedef uint64_t ilka_off_t;
-typedef uint16_t ilka_epoch_t;
 
 struct ilka_options
 {
@@ -23,7 +19,16 @@ struct ilka_options
     bool writable;
     bool huge_tlb;
     bool populate;
-}
+};
+
+
+// -----------------------------------------------------------------------------
+// region
+// -----------------------------------------------------------------------------
+
+struct ilka_region;
+typedef uint64_t ilka_off_t;
+typedef uint16_t ilka_epoch_t;
 
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
 void ilka_close(struct ilka_region *r);
