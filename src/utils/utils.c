@@ -6,4 +6,5 @@
 */
 
 #include "error.c"
+#include "rand.c"
 
