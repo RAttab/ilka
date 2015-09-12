@@ -348,7 +348,7 @@ decode_states(struct bit_decoder *coder, struct trie_kvs_info *info)
     size_t bits = info->buckets * 2;
 
     /* atomic acquire: states must be fully read before we read any buckets. */
-    enum memory_order order = memory_order_relaxed;
+    enum morder order = morder_relaxed;
 
     if (info->buckets <= 32)
         info->state[0] = bit_decode_atomic(coder, bits, order);
@@ -374,7 +374,7 @@ decode_bucket(
 
     /* atomic relaxed: we only need to ensure that the value is read
      * atomically. Ordering is ensured by the state bitfield. */
-    enum memory_order order = memory_order_relaxed;
+    enum morder order = morder_relaxed;
 
     if (!info->is_abs_buckets) {
         kv.key = bit_decode_atomic(&coder, info->key.bits, order);
@@ -469,7 +469,7 @@ encode_state(
 
     /* atomic release: make sure that any written buckets are visible before
      * updating the state. */
-    bit_encode_atomic(&coder, state, 2, memory_order_release);
+    bit_encode_atomic(&coder, state, 2, morder_release);
 
     set_bucket_state(info, bucket, state);
 }
@@ -499,7 +499,7 @@ encode_bucket(
 
     /* atomic relaxed: we only need to ensure that that we write the entire
      * value in one instruction. Ordering is enforced by states. */
-    enum memory_order order = memory_order_relaxed;
+    enum morder order = morder_relaxed;
 
     if (!info->is_abs_buckets) {
         bit_encode_atomic(&coder, kv.key >> info->key.shift, info->key.bits, order);
@@ -527,7 +527,7 @@ encode_bucket_value(
     /* atomic release: if we're only writting the value then we're not updating
      * the state which means that we need to make it immediately visible to
      * readers. */
-    enum memory_order order = memory_order_release;
+    enum morder order = morder_release;
     bit_encode_atomic(&coder, value >> info->val.shift, info->val.bits, order);
 }
 
@@ -823,7 +823,7 @@ trie_kvs_set_value_inplace(
 
     /* atomic release: make sure that the new value is visible as soon as we
      * write it. */
-    bit_encode_atomic(&coder, value, info->value_bits, memory_order_release);
+    bit_encode_atomic(&coder, value, info->value_bits, morder_release);
 
     return 1;
 }

@@ -124,12 +124,12 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
         ilka_world_stop(r);
 
         void *new_start = mmap_remap_hard(r->start, old_len, new_len);
-        ilka_atomic_store(&r->start, new_start, memory_order_relaxed);
+        ilka_atomic_store(&r->start, new_start, morder_relaxed);
 
         ilka_world_resume(r);
     }
 
-    ilka_atomic_store(&r->len, new_len, memory_order_relaxed);
+    ilka_atomic_store(&r->len, new_len, morder_relaxed);
 
     slock_unlock(&r->lock);
 
@@ -138,11 +138,11 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
 
 void * _ilka_access(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    size_t rlen = ilka_atomic_load(&r->len, memory_order_relaxed);
+    size_t rlen = ilka_atomic_load(&r->len, morder_relaxed);
     ilka_assert(off + len <= rlen,
             "invalid read pointer: %lu + %lu > %lu", off, len, rlen);
 
-    void *start = ilka_atomic_load(&r->start, memory_order_relaxed);
+    void *start = ilka_atomic_load(&r->start, morder_relaxed);
     return ((uint8_t*) start) + off;
 }
 

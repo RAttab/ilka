@@ -93,7 +93,7 @@ bit_decode_align(struct bit_decoder *coder)
 }
 
 inline uint64_t
-bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum memory_order order)
+bit_decode_atomic(struct bit_decoder *coder, size_t bits, enum morder order)
 {
     bit_decoder_check(coder, bits);
     ilka_assert(bits + coder->pos <= 64,
@@ -191,9 +191,7 @@ bit_encode_align(struct bit_encoder *coder)
 
 inline void
 bit_encode_atomic(
-        struct bit_encoder *coder,
-        uint64_t value, size_t bits,
-        enum memory_order order)
+        struct bit_encoder *coder, uint64_t value, size_t bits, enum morder order)
 {
     bit_encoder_check(coder, bits);
     ilka_assert(bits + coder->pos <= 64,

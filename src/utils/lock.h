@@ -17,11 +17,11 @@ void slock_init(ilka_slock *l) { *l = 0; }
 
 void slock_lock(ilka_slock *l)
 {
-    uint64_t old = ilka_atomic_load(l, memory_order_relaxed);
-    while (old || ilka_atomic_cmp_xchg(l, &old, 1, memory_order_acquire) == 0);
+    uint64_t old = ilka_atomic_load(l, morder_relaxed);
+    while (old || ilka_atomic_cmp_xchg(l, &old, 1, morder_acquire) == 0);
 }
 
 void slock_unlock(ilka_slock *l)
 {
-    ilka_atomic_store(l, 0, memory_order_release);
+    ilka_atomic_store(l, 0, morder_release);
 }

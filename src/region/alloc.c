@@ -257,7 +257,7 @@ ilka_off_t _alloc_bucket_fill(
     ilka_off_t head = ar->buckets[bucket];
     do {
         *last = head;
-    } while(!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, start + len, memory_order_relaxed));
+    } while(!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, start + len, morder_relaxed));
 
     return page;
 }
@@ -281,7 +281,7 @@ ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
         }
 
         next = ilka_read(a->region, head, sizeof(ilka_off_t));
-    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, *next, memory_order_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, *next, morder_relaxed));
 
     return head;
 }
@@ -301,5 +301,5 @@ void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
     ilka_off_t *node = ilka_write(a->region, off, sizeof(ilka_off_t));
     do {
         *node = head;
-    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, off, memory_order_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, off, morder_relaxed));
 }

@@ -60,10 +60,10 @@ void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
     node->off = off;
     node->len = len;
 
-    struct persist_node *head = ilka_atomic_load(&p->head, memory_order_relaxed);
+    struct persist_node *head = ilka_atomic_load(&p->head, morder_relaxed);
     do {
         node->next = head;
-    } while (ilka_atomic_cmp_xchg(&p->head, head, node, memory_order_relaxed));
+    } while (ilka_atomic_cmp_xchg(&p->head, head, node, morder_relaxed));
 }
 
 void _persist_wait(pid_t pid) {
@@ -85,7 +85,7 @@ void _persist_wait(pid_t pid) {
 
 void persist_save(struct ilka_persist *p)
 {
-    struct persist_node *head = ilka_atomic_xchg(&p->head, NULL, memory_order_relaxed);
+    struct persist_node *head = ilka_atomic_xchg(&p->head, NULL, morder_relaxed);
     if (!head) return;
 
     slock_lock(&p->lock);

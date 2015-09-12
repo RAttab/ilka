@@ -16,14 +16,14 @@
 // memory model
 // -----------------------------------------------------------------------------
 
-enum memory_order
+enum morder
 {
-    memory_order_relaxed = __ATOMIC_RELAXED,
-    memory_order_consume = __ATOMIC_CONSUME,
-    memory_order_acquire = __ATOMIC_ACQUIRE,
-    memory_order_release = __ATOMIC_RELEASE,
-    memory_order_acq_rel = __ATOMIC_ACQ_REL,
-    memory_order_seq_cst = __ATOMIC_SEQ_CST,
+    morder_relaxed = __ATOMIC_RELAXED,
+    morder_consume = __ATOMIC_CONSUME,
+    morder_acquire = __ATOMIC_ACQUIRE,
+    morder_release = __ATOMIC_RELEASE,
+    morder_acq_rel = __ATOMIC_ACQ_REL,
+    morder_seq_cst = __ATOMIC_SEQ_CST,
 };
 
 // -----------------------------------------------------------------------------
@@ -35,8 +35,8 @@ enum memory_order
 #define ilka_atomic_load(p, m)     __atomic_load_n(p, m)
 #define ilka_atomic_store(p, v, m) __atomic_store_n(p, v, m)
 #define ilka_atomic_xchg(p, v, m)  __atomic_exchange_n(p, v, m)
-#define ilka_atomic_cmp_xchg(p, exp, val, m)                    \
-    __atomic_compare_exchange_n(p, exp, val, false, m, memory_order_relaxed)
+#define ilka_atomic_cmp_xchg(p, exp, val, m)                            \
+    __atomic_compare_exchange_n(p, exp, val, false, m, morder_relaxed)
 
 #define ilka_atomic_fetch_add(p, v, m)  __atomic_fetch_add(p, v, m)
 #define ilka_atomic_fetch_sub(p, v, m)  __atomic_fetch_sub(p, v, m)

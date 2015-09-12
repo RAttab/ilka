@@ -66,13 +66,13 @@ void epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
     *node = (struct epoch_node) {off, len, 0};
 
     union epoch_state state;
-    state.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
+    state.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
     size_t i = state.unpacked.epoch & 0x1;
     struct epoch_node *old = e->defers[i];
     do {
         node->next = old;
-    } while (!ilka_atomic_cmp_xchg(&e->defers[i], &old, node, memory_order_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&e->defers[i], &old, node, morder_relaxed));
 }
 
 ilka_epoch_t epoch_enter(struct ilka_epoch *e)
@@ -81,7 +81,7 @@ ilka_epoch_t epoch_enter(struct ilka_epoch *e)
     union epoch_state old, new;
 
   restart:
-    old.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
+    old.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
     do {
         if (old.unpacked.lock) goto restart;
@@ -94,7 +94,7 @@ ilka_epoch_t epoch_enter(struct ilka_epoch *e)
 
         new.unpacked.epochs[epoch & 0x1]++;
 
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_acquire));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_acquire));
 
     return epoch;
 }
@@ -104,16 +104,16 @@ void epoch_exit(struct ilka_epoch *e, ilka_epoch_t epoch)
     struct epoch_node *defers = NULL;
 
     union epoch_state old, new;
-    old.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
+    old.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
     do {
         new.packed = old.packed;
         uint16_t count = --new.unpacked.epochs[epoch & 0x1];
 
         if (!defers && !count && epoch != new.unpacked.epoch)
-            defers = ilka_atomic_xchg(&e->defers[epoch & 0x1], NULL, memory_order_relaxed);
+            defers = ilka_atomic_xchg(&e->defers[epoch & 0x1], NULL, morder_relaxed);
 
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_release));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
 
     while (defers) {
         ilka_free(e->region, defers->off, defers->len);
@@ -127,26 +127,26 @@ void epoch_exit(struct ilka_epoch *e, ilka_epoch_t epoch)
 void epoch_world_stop(struct ilka_epoch *e)
 {
     union epoch_state old, new;
-    old.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
+    old.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
     do {
         new.packed = old.packed;
         new.unpacked.lock++;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_relaxed));
 
     while (old.unpacked.epochs[0] || old.unpacked.epochs[1])
-        old.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
+        old.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
-    ilka_atomic_fence(memory_order_acquire);
+    ilka_atomic_fence(morder_acquire);
 }
 
 void epoch_world_resume(struct ilka_epoch *e)
 {
     union epoch_state old, new;
-    old.packed = ilka_atomic_load(&e->state.packed, memory_order_relaxed);
+    old.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
     do {
         new.packed = old.packed;
         new.unpacked.lock--;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, memory_order_release));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
 }
