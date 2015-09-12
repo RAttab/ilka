@@ -31,7 +31,8 @@ struct ilka_persist
     struct persist_node *head;
 };
 
-struct ilka_persist * persist_init(struct ilka_region *r, const char *file)
+static struct ilka_persist * persist_init(
+        struct ilka_region *r, const char *file)
 {
     struct ilka_persist *p = calloc(1, sizeof(struct ilka_persist));
 
@@ -42,7 +43,7 @@ struct ilka_persist * persist_init(struct ilka_region *r, const char *file)
     return p;
 }
 
-void persist_close(struct ilka_persist *p)
+static void persist_close(struct ilka_persist *p)
 {
     struct persist_node *head = p->head;
     while (head) {
@@ -54,7 +55,7 @@ void persist_close(struct ilka_persist *p)
     free(p);
 }
 
-void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
+static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
 {
     struct persist_node *node = calloc(1, sizeof(struct persist_node));
     node->off = off;
@@ -66,7 +67,8 @@ void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
     } while (ilka_atomic_cmp_xchg(&p->head, &head, node, morder_relaxed));
 }
 
-void _persist_wait(pid_t pid) {
+static void _persist_wait(pid_t pid) 
+{
     int status;
     do {
         if (waitpid(pid, &status, WUNTRACED) == -1)
@@ -82,7 +84,7 @@ void _persist_wait(pid_t pid) {
     }
 }
 
-void persist_save(struct ilka_persist *p)
+static void persist_save(struct ilka_persist *p)
 {
     struct persist_node *head = ilka_atomic_xchg(&p->head, NULL, morder_relaxed);
     if (!head) return;

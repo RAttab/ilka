@@ -43,14 +43,14 @@ struct alloc_page
     struct alloc_page_node pages[];
 };
 
-void _alloc_page_init(struct alloc_page *a, size_t len)
+static void _alloc_page_init(struct alloc_page *a, size_t len)
 {
     a->next = 0;
     a->len = 0;
     a->cap = (len - sizeof(struct alloc_page)) / sizeof(struct alloc_page_node);
 }
 
-void _alloc_page_shift(struct ilka_region *r, struct alloc_page *a)
+static void _alloc_page_shift(struct ilka_region *r, struct alloc_page *a)
 {
     if (!a->next || a->len == a->cap) return;
     struct alloc_page *next = ilka_write(r, a->next, ILKA_PAGE_SIZE);
@@ -70,7 +70,8 @@ void _alloc_page_shift(struct ilka_region *r, struct alloc_page *a)
     _alloc_page_shift(r, next);
 }
 
-ilka_off_t _alloc_page_new(struct ilka_region *r, struct alloc_page *a, size_t len)
+static ilka_off_t _alloc_page_new(
+        struct ilka_region *r, struct alloc_page *a, size_t len)
 {
     ilka_assert(len > alloc_bucket_max_len,
             "page allocation is too small: %lu > %lu", len, alloc_bucket_max_len);
@@ -103,7 +104,7 @@ ilka_off_t _alloc_page_new(struct ilka_region *r, struct alloc_page *a, size_t l
     return result.off;
 }
 
-void _alloc_page_free(
+static void _alloc_page_free(
         struct ilka_region *r, struct alloc_page *a, ilka_off_t off, size_t len)
 {
     ilka_assert(len > alloc_bucket_max_len,
@@ -191,12 +192,12 @@ struct alloc_region
     ilka_off_t buckets[alloc_buckets];
 };
 
-struct alloc_page * _alloc_pages(struct alloc_region *a)
+static struct alloc_page * _alloc_pages(struct alloc_region *a)
 {
     return (struct alloc_page *)(a + 1);
 }
 
-struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
+static struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
 {
     struct ilka_alloc * a = calloc(1, sizeof(struct ilka_alloc));
     a->region = r;
@@ -220,18 +221,18 @@ struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
     return a;
 }
 
-void alloc_close(struct ilka_alloc *alloc)
+static void alloc_close(struct ilka_alloc *alloc)
 {
     free(alloc);
 }
 
-size_t _alloc_bucket(size_t *len)
+static size_t _alloc_bucket(size_t *len)
 {
     *len = *len < alloc_bucket_min_len ? alloc_bucket_min_len : ceil_pow2(*len);
     return ctz(*len) - ctz(alloc_bucket_min_len);
 }
 
-ilka_off_t _alloc_bucket_fill(
+static ilka_off_t _alloc_bucket_fill(
         struct ilka_alloc *a, struct alloc_region *ar, size_t len, size_t bucket)
 {
     const size_t nodes = ILKA_PAGE_SIZE / len;
@@ -262,7 +263,7 @@ ilka_off_t _alloc_bucket_fill(
     return page;
 }
 
-ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
+static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 {
     struct alloc_region *ar = ilka_write(a->region, a->start, alloc_min_pages);
 
@@ -286,7 +287,7 @@ ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
     return head;
 }
 
-void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
+static void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
 {
     struct alloc_region *ar = ilka_write(a->region, a->start, alloc_min_pages);
 

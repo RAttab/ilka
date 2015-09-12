@@ -136,7 +136,7 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     return old_len;
 }
 
-void * _ilka_access(struct ilka_region *r, ilka_off_t off, size_t len)
+static void * _ilka_access(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     size_t rlen = ilka_atomic_load(&r->len, morder_relaxed);
     ilka_assert(off + len <= rlen,

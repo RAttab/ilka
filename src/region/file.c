@@ -17,7 +17,7 @@
 // -----------------------------------------------------------------------------
 
 
-int file_open(const char *file, struct ilka_options *options)
+static int file_open(const char *file, struct ilka_options *options)
 {
     ilka_assert(options->open || options->create,
             "must provide 'ilka_open' or 'ilka_create' to open '%s'", file);
@@ -36,13 +36,13 @@ int file_open(const char *file, struct ilka_options *options)
     return fd;
 }
 
-void file_close(int fd)
+static void file_close(int fd)
 {
     if (close(fd) == -1)
         ilka_error_errno("unable to close fd '%d'", fd);
 }
 
-size_t file_len(int fd)
+static size_t file_len(int fd)
 {
     struct stat stat;
 
@@ -52,7 +52,7 @@ size_t file_len(int fd)
     return stat.st_size;
 }
 
-size_t file_grow(int fd, size_t len)
+static size_t file_grow(int fd, size_t len)
 {
     size_t old = file_len(fd);
     if (old >= len) return old;

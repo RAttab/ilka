@@ -38,7 +38,7 @@ struct ilka_journal
     size_t cap;
 };
 
-char * _journal_file(const char* file)
+static char * _journal_file(const char* file)
 {
     size_t n = strlen(file) + strlen(journal_ext) + 1;
     char *buf = malloc(n);
@@ -46,7 +46,8 @@ char * _journal_file(const char* file)
     return buf;
 }
 
-struct ilka_journal * journal_init(struct ilka_region *r, const char* file)
+static struct ilka_journal * journal_init(
+        struct ilka_region *r, const char* file)
 {
     struct ilka_journal *j = calloc(1, sizeof(struct ilka_journal));
 
@@ -59,7 +60,7 @@ struct ilka_journal * journal_init(struct ilka_region *r, const char* file)
     return j;
 }
 
-void journal_add(struct ilka_journal *j, ilka_off_t off, size_t len)
+static void journal_add(struct ilka_journal *j, ilka_off_t off, size_t len)
 {
     if (j->len >= j->cap) {
         j->cap *= 2;
@@ -87,7 +88,8 @@ void journal_add(struct ilka_journal *j, ilka_off_t off, size_t len)
     }
 }
 
-size_t _journal_next(struct ilka_journal *j, size_t i, struct journal_node *node)
+static size_t _journal_next(
+        struct ilka_journal *j, size_t i, struct journal_node *node)
 {
     *node = j->nodes[i++];
 
@@ -102,7 +104,7 @@ size_t _journal_next(struct ilka_journal *j, size_t i, struct journal_node *node
     return i;
 }
 
-void _journal_write(int fd, const void *ptr, size_t len)
+static void _journal_write(int fd, const void *ptr, size_t len)
 {
     ssize_t ret = write(fd, ptr, len);
     if (ret == -1) ilka_error_errno("unable to write to journal");
@@ -110,7 +112,7 @@ void _journal_write(int fd, const void *ptr, size_t len)
         ilka_error("incomplete write to journal: %lu != %lu", ret, len);
 }
 
-void _journal_write_log(struct ilka_journal *j)
+static void _journal_write_log(struct ilka_journal *j)
 {
     const char *file = j->journal_file;
 
@@ -135,7 +137,7 @@ void _journal_write_log(struct ilka_journal *j)
     if (close(fd) == -1) ilka_error_errno("unable to close journal: %s", file);
 }
 
-void _journal_write_region(struct ilka_journal *j)
+static void _journal_write_region(struct ilka_journal *j)
 {
     int fd = open(j->file, O_WRONLY);
     if (fd == -1) ilka_error_errno("unable to open region: %s", j->file);
@@ -155,7 +157,7 @@ void _journal_write_region(struct ilka_journal *j)
     if (close(fd) == -1) ilka_error_errno("unable to close region: %s", j->file);
 }
 
-void journal_finish(struct ilka_journal *j)
+static void journal_finish(struct ilka_journal *j)
 {
     _journal_write_log(j);
     _journal_write_region(j);
@@ -167,7 +169,7 @@ void journal_finish(struct ilka_journal *j)
     free(j->journal_file);
 }
 
-int _journal_check(const char *file)
+static int _journal_check(const char *file)
 {
     int fd = open(file, O_RDONLY);
     if (fd == -1) {
@@ -198,7 +200,7 @@ int _journal_check(const char *file)
     return fd;
 }
 
-void _journal_read(int fd, void *ptr, size_t len)
+static void _journal_read(int fd, void *ptr, size_t len)
 {
     ssize_t ret = read(fd, ptr, len);
     if (ret == -1) ilka_error_errno("unable to read from journal");
@@ -206,7 +208,7 @@ void _journal_read(int fd, void *ptr, size_t len)
         ilka_error("incomplete read from journal: %lu != %lu", ret, len);
 }
 
-void journal_recover(const char *file)
+static void journal_recover(const char *file)
 {
     char *journal_file = _journal_file(file);
     int journal_fd = _journal_check(journal_file);

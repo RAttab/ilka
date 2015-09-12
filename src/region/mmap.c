@@ -10,7 +10,7 @@
 // mmap
 // -----------------------------------------------------------------------------
 
-void * mmap_map(int fd, size_t len, struct ilka_options *options)
+static void * mmap_map(int fd, size_t len, struct ilka_options *options)
 {
     int prot = PROT_READ;
     if (!options->read_only) prot |= PROT_WRITE;
@@ -27,14 +27,14 @@ void * mmap_map(int fd, size_t len, struct ilka_options *options)
     return start;
 }
 
-void mmap_unmap(void *start, size_t len)
+static void mmap_unmap(void *start, size_t len)
 {
     if (munmap(start, len) == -1) {
         ilka_error_errno("unable to unmap '%p' with length '%lu'", start, len);
     }
 }
 
-bool mmap_remap_soft(void *start, size_t old, size_t new)
+static bool mmap_remap_soft(void *start, size_t old, size_t new)
 {
     void * ret = mremap(start, old, new, 0);
     if (ret != MAP_FAILED) return true;
@@ -44,7 +44,7 @@ bool mmap_remap_soft(void *start, size_t old, size_t new)
             start, old, new);
 }
 
-void * mmap_remap_hard(void *start, size_t old, size_t new)
+static void * mmap_remap_hard(void *start, size_t old, size_t new)
 {
     void * ret = mremap(start, old, new, MREMAP_MAYMOVE);
     if (ret == MAP_FAILED) {
