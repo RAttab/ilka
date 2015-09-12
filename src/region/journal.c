@@ -114,7 +114,7 @@ void _journal_write_log(struct ilka_journal *j)
 {
     const char *file = j->journal_file;
 
-    int fd = open(j->file, O_CREAT | O_EXCL | O_APPEND, O_WRONLY);
+    int fd = open(file, O_CREAT | O_EXCL | O_APPEND | O_WRONLY, 0764);
     if (fd == -1) ilka_error_errno("unable to create journal: %s", file);
 
     struct journal_node node;
@@ -137,7 +137,7 @@ void _journal_write_log(struct ilka_journal *j)
 
 void _journal_write_region(struct ilka_journal *j)
 {
-    int fd = open(j->file, 0, O_WRONLY);
+    int fd = open(j->file, O_WRONLY);
     if (fd == -1) ilka_error_errno("unable to open region: %s", j->file);
 
     struct journal_node node;
@@ -169,7 +169,7 @@ void journal_finish(struct ilka_journal *j)
 
 int _journal_check(const char *file)
 {
-    int fd = open(file, 0, O_RDONLY);
+    int fd = open(file, O_RDONLY);
     if (fd == -1) {
         if (errno == ENOENT) return -1;
         ilka_error_errno("unable to open journal: %s", file);
@@ -212,7 +212,7 @@ void journal_recover(const char *file)
     int journal_fd = _journal_check(journal_file);
     if (journal_fd == -1) goto done;
 
-    int region_fd = open(file, 0, O_WRONLY);
+    int region_fd = open(file, O_WRONLY);
     if (region_fd == -1) ilka_error_errno("unable to open region: %s", file);
 
     struct journal_node node = {0, 0};

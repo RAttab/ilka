@@ -64,7 +64,7 @@ static void deltree(const char *path)
         ilka_error_errno("unable to opendir: %s", path);
     }
 
-    size_t path_len = strlen(path);
+    size_t path_len = strlen(path) + 1;
 
     char *child = alloca(path_len + NAME_MAX + 1);
     memcpy(child, path, path_len);

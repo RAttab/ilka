@@ -41,17 +41,6 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_GNU_SOURCE")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FILE_OFFSET_BITS=64")
 
-include(CheckCXXCompilerFlag)
-
-check_cxx_compiler_flag(-std=c++11 ILKA_FLAG_CPP11)
-check_cxx_compiler_flag(-std=c++0x ILKA_FLAG_CPP0X)
-
-if (ILKA_FLAG_CPP11)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-elseif (ILKA_FLAG_CPP0X)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
-endif()
-
 
 #------------------------------------------------------------------------------#
 # LIBRARIES
@@ -119,3 +108,4 @@ endfunction()
 ilka_test(bits)
 ilka_test(bit_coder)
 ilka_test(key)
+ilka_test(alloc)

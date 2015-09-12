@@ -74,7 +74,8 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     r->options = *options;
     r->fd = file_open(file, &r->options);
     r->len = file_grow(r->fd, ilka_min_size);
-    mmap_map(r->fd, r->len, &r->options);
+    r->start = mmap_map(r->fd, r->len, &r->options);
+    r->persist = persist_init(r, r->file);
 
     const struct meta * meta = ilka_read(r, 0, sizeof(struct meta));
     if (meta->magic != ilka_magic) {
@@ -91,7 +92,6 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
                 file, meta->version, ilka_version);
     }
 
-    r->persist = persist_init(r, r->file);
     r->alloc = alloc_init(r, meta->alloc);
     r->epoch = epoch_init(r);
 

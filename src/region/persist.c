@@ -63,16 +63,15 @@ void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
     struct persist_node *head = ilka_atomic_load(&p->head, morder_relaxed);
     do {
         node->next = head;
-    } while (ilka_atomic_cmp_xchg(&p->head, head, node, morder_relaxed));
+    } while (ilka_atomic_cmp_xchg(&p->head, &head, node, morder_relaxed));
 }
 
 void _persist_wait(pid_t pid) {
     int status;
     do {
-        if (waitpid(pid, &status, WUNTRACED) == -1) {
+        if (waitpid(pid, &status, WUNTRACED) == -1)
             ilka_error_errno("unable to wait on persist process: %d", pid);
-        }
-    } while (WIFEXITED(status) || WIFSIGNALED(status));
+    } while (!WIFEXITED(status) && !WIFSIGNALED(status));
 
     if (WIFEXITED(status)) {
         if (!WEXITSTATUS(status)) return;

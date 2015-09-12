@@ -13,7 +13,7 @@
 void * mmap_map(int fd, size_t len, struct ilka_options *options)
 {
     int prot = PROT_READ;
-    if (options->writable) prot |= PROT_WRITE;
+    if (!options->read_only) prot |= PROT_WRITE;
 
     int flags = MAP_PRIVATE;
     if (options->huge_tlb) flags |= MAP_HUGETLB;

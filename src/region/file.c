@@ -28,9 +28,9 @@ int file_open(const char *file, struct ilka_options *options)
         flags |= O_CREAT;
         flags |= options->open ? 0 : O_EXCL;
     }
-    flags |= options->writable ? O_RDWR : O_RDONLY;
+    flags |= options->read_only ? O_RDONLY : O_RDWR;
 
-    int fd = open(file, flags, O_RDONLY);
+    int fd = open(file, flags, 0764);
     if (fd == -1) ilka_error_errno("unable to open '%s'", file);
 
     return fd;

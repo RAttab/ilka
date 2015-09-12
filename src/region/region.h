@@ -20,7 +20,7 @@ struct ilka_options
 {
     bool open;
     bool create;
-    bool writable;
+    bool read_only;
     bool huge_tlb;
     bool populate;
 };
