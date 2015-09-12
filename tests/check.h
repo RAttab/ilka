@@ -13,37 +13,46 @@
 typedef void (*ilka_make_suite_t)(Suite *);
 int ilka_tests(const char *name, ilka_make_suite_t make_suite);
 
+void ilka_setup();
+void ilka_teardown();
+
 #define ilka_tc_pre(suite, name) do { TCase *tc = tcase_create(#name)
 #define ilka_tc_post(suite, name) suite_add_tcase(suite, tc); } while(0)
 
-#define ilka_tc(s, n)                           \
-    ilka_tc_pre(s, n);                          \
-    tcase_add_test(tc, n);                      \
+#define ilka_tc(s, n)                                           \
+    ilka_tc_pre(s, n);                                          \
+    tcase_add_test(tc, n);                                      \
+    tcase_add_unchecked_fixture(tc, ilka_setup, ilka_teardown); \
     ilka_tc_post(s, n)
 
-#define ilka_tc_signal(s, n, sig)               \
-    ilka_tc_pre(s, n);                          \
-    tcase_add_test_raise_signal(tc, n, sig);    \
+#define ilka_tc_signal(s, n, sig)                               \
+    ilka_tc_pre(s, n);                                          \
+    tcase_add_test_raise_signal(tc, n, sig);                    \
+    tcase_add_unchecked_fixture(tc, ilka_setup, ilka_teardown); \
     ilka_tc_post(s, n)
 
-#define ilka_tc_exit(s, n, exp)                 \
-    ilka_tc_pre(s, n);                          \
-    tcase_add_exit_test(tc, n, exp);            \
+#define ilka_tc_exit(s, n, exp)                                 \
+    ilka_tc_pre(s, n);                                          \
+    tcase_add_exit_test(tc, n, exp);                            \
+    tcase_add_unchecked_fixture(tc, ilka_setup, ilka_teardown); \
     ilka_tc_post(s, n)
 
-#define ilka_tc_loop(s, n, start, end)          \
-    ilka_tc_pre(s, n);                          \
-    tcase_add_loop_test(tc, n, start, end);     \
+#define ilka_tc_loop(s, n, start, end)                          \
+    ilka_tc_pre(s, n);                                          \
+    tcase_add_loop_test(tc, n, start, end);                     \
+    tcase_add_unchecked_fixture(tc, ilka_setup, ilka_teardown); \
     ilka_tc_post(s, n)
 
-#define ilka_tc_loop_signal(s, n, start, end, sig)      \
-    ilka_tc_pre(s, n);                                  \
-    tcase_add_loop_test(tc, n, sig, start, end);        \
+#define ilka_tc_loop_signal(s, n, start, end, sig)              \
+    ilka_tc_pre(s, n);                                          \
+    tcase_add_loop_test(tc, n, sig, start, end);                \
+    tcase_add_unchecked_fixture(tc, ilka_setup, ilka_teardown); \
     ilka_tc_post(s, n)
 
-#define ilka_tc_loop_exit(s, n, start, end, exp)        \
-    ilka_tc_pre(s, n);                                  \
-    tcase_add_loop_test(tc, n, exp, start, end);        \
+#define ilka_tc_loop_exit(s, n, start, end, exp)                \
+    ilka_tc_pre(s, n);                                          \
+    tcase_add_loop_test(tc, n, exp, start, end);                \
+    tcase_add_unchecked_fixture(tc, ilka_setup, ilka_teardown); \
     ilka_tc_post(s, n)
 
 
