@@ -96,7 +96,7 @@ static size_t _journal_next(
     for (; i < j->len; i++) {
         ilka_off_t end = node->off + node->len;
         if (j->nodes[i].off > end) break;
-        if (end < j->nodes[i].off + j->nodes[i].len) continue;
+        if (end <= j->nodes[i].off + j->nodes[i].len) continue;
 
         node->len += end - j->nodes[i].off + j->nodes[i].len;
     }

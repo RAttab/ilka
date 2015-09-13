@@ -121,10 +121,10 @@ static void _alloc_page_free(
         }
 
         if (off + len == a->pages[i].off) {
-            ilka_assert(!i, "can only match on first page");
             a->pages[i].off -= len;
             a->pages[i].len += len;
-            return;
+            added = true;
+            break;
         }
 
         if (off < a->pages[i].off) break;
@@ -205,11 +205,11 @@ static struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
     slock_init(&a->lock);
 
     const struct alloc_region * ar =
-        ilka_read(a->region, a->start, alloc_min_pages);
+        ilka_read(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
 
     if (!ar->init) {
         struct alloc_region * ar =
-            ilka_write(a->region, a->start, alloc_min_pages);
+            ilka_write(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
 
         ar->init = 1;
 
@@ -265,7 +265,8 @@ static ilka_off_t _alloc_bucket_fill(
 
 static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 {
-    struct alloc_region *ar = ilka_write(a->region, a->start, alloc_min_pages);
+    struct alloc_region *ar =
+        ilka_write(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
 
     if (len > alloc_bucket_max_len)
         return _alloc_page_new(a->region, _alloc_pages(ar), len);
@@ -289,7 +290,8 @@ static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 
 static void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
 {
-    struct alloc_region *ar = ilka_write(a->region, a->start, alloc_min_pages);
+    struct alloc_region *ar =
+        ilka_write(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
 
     if (len > alloc_bucket_max_len) {
         _alloc_page_free(a->region, _alloc_pages(ar), off, len);
