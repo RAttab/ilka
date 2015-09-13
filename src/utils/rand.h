@@ -13,3 +13,4 @@
 
 void ilka_srand(uint32_t seed);
 uint32_t ilka_rand();
+uint32_t ilka_rand_range(uint32_t min, uint32_t max);

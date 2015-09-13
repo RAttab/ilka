@@ -41,3 +41,8 @@ uint32_t ilka_rand()
     return value;
 }
 
+uint32_t ilka_rand_range(uint32_t min, uint32_t max)
+{
+    ilka_assert(min < max, "max must be strictly greater then min");
+    return ilka_rand() % (max - min) + min;
+}
