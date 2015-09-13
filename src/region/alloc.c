@@ -210,8 +210,12 @@ static ilka_off_t _alloc_bucket_fill(
 
 static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 {
-    if (len > alloc_bucket_max_len)
-        return _alloc_page_new(a->region, a->start, len);
+    if (len > alloc_bucket_max_len) {
+        slock_lock(&a->lock);
+        ilka_off_t result = _alloc_page_new(a->region, a->start, len);
+        slock_unlock(&a->lock);
+        return result;
+    }
 
     struct alloc_region *ar =
         ilka_write(a->region, a->start, sizeof(struct alloc_region));
@@ -236,7 +240,9 @@ static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 static void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
 {
     if (len > alloc_bucket_max_len) {
+        slock_lock(&a->lock);
         _alloc_page_free(a->region, a->start, off, len);
+        slock_unlock(&a->lock);
         return;
     }
 
