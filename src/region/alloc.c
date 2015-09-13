@@ -77,12 +77,15 @@ static ilka_off_t _alloc_page_new(
             "page allocation is too small: %lu > %lu", len, alloc_bucket_max_len);
     len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
+    size_t result_i = 0;
     struct alloc_page_node result = {0, -1UL};
 
-    size_t i = 0;
-    for (; i < a->len && result.len != len; ++i) {
-        if (a->pages[i].len > len) continue;
-        if (a->pages[i].len < result.len) result = a->pages[i];
+    for (size_t i = 0; i < a->len && result.len != len; ++i) {
+        if (a->pages[i].len < len) continue;
+        if (a->pages[i].len < result.len) {
+            result_i = i;
+            result = a->pages[i];
+        }
     }
 
     if (!result.off) {
@@ -91,12 +94,13 @@ static ilka_off_t _alloc_page_new(
     }
 
     if (result.len > len) {
-        a->pages[i].off += len;
-        a->pages[i].len -= len;
+        a->pages[result_i].off += len;
+        a->pages[result_i].len -= len;
         return result.off;
     }
 
-    for (; i + 1 < a->len; ++i) a->pages[i] = a->pages[i + 1];
+    for (size_t i = result_i; i + 1 < a->len; ++i)
+        a->pages[i] = a->pages[i + 1];
     a->len--;
 
     _alloc_page_shift(r, a);

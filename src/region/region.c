@@ -140,7 +140,8 @@ static void * _ilka_access(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     size_t rlen = ilka_atomic_load(&r->len, morder_relaxed);
     ilka_assert(off + len <= rlen,
-            "invalid read pointer: %lu + %lu > %lu", off, len, rlen);
+            "invalid read pointer: %p + %p = %p > %p",
+            (void*) off, (void*) len, (void*) (off + len), (void*) rlen);
 
     void *start = ilka_atomic_load(&r->start, morder_relaxed);
     return ((uint8_t*) start) + off;
