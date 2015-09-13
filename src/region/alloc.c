@@ -32,150 +32,109 @@
 
 struct alloc_page_node
 {
+    ilka_off_t next;
     ilka_off_t off;
     size_t len;
 };
 
-struct alloc_page
-{
-    ilka_off_t next;
-    size_t len, cap;
-    struct alloc_page_node pages[];
-};
-
-static void _alloc_page_init(struct alloc_page *a, size_t len)
-{
-    a->next = 0;
-    a->len = 0;
-    a->cap = (len - sizeof(struct alloc_page)) / sizeof(struct alloc_page_node);
-}
-
-static void _alloc_page_shift(struct ilka_region *r, struct alloc_page *a)
-{
-    if (!a->next || a->len == a->cap) return;
-    struct alloc_page *next = ilka_write(r, a->next, ILKA_PAGE_SIZE);
-    if (!next->len) return;
-
-    size_t avail = a->cap - a->len;
-    size_t n = avail < next->len ? next->len - avail : next->len;
-
-    for (size_t i = 0; i < n; i++)
-        a->pages[a->len + i] = next->pages[i];
-    a->len += n;
-
-    for (size_t i = 0; i < next->len - n; i++)
-        next->pages[i] = next->pages[i + n];
-    next->len -= n;
-
-    _alloc_page_shift(r, next);
-}
-
 static ilka_off_t _alloc_page_new(
-        struct ilka_region *r, struct alloc_page *a, size_t len)
+        struct ilka_region *r, ilka_off_t prev_off, size_t len)
 {
     ilka_assert(len > alloc_bucket_max_len,
             "page allocation is too small: %lu > %lu", len, alloc_bucket_max_len);
     len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
-    size_t result_i = 0;
-    struct alloc_page_node result = {0, -1UL};
+    const ilka_off_t *prev = ilka_read(r, prev_off, sizeof(ilka_off_t));
+    ilka_off_t node_off = *prev;
 
-    for (size_t i = 0; i < a->len && result.len != len; ++i) {
-        if (a->pages[i].len < len) continue;
-        if (a->pages[i].len < result.len) {
-            result_i = i;
-            result = a->pages[i];
+    while (node_off) {
+        const struct alloc_page_node *node =
+            ilka_read(r, node_off, sizeof(struct alloc_page_node));
+
+        if (node->len < len) {
+            prev_off = node_off;
+            node_off = node->next;
+            continue;
         }
+
+        if (node->len == len) {
+            ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
+            *wprev = node->next;
+            return node->off;
+        }
+
+        if (node->len > len) {
+            struct alloc_page_node *wnode =
+                ilka_write(r, node_off, sizeof(struct alloc_page_node));
+
+            wnode->len -= len;
+            return wnode->off + len;
+        }
+
+        ilka_assert(false, "unreachable");
     }
 
-    if (!result.off) {
-        if (!a->next) return ilka_grow(r, len);
-        return _alloc_page_new(r, ilka_write(r, a->next, ILKA_PAGE_SIZE), len);
-    }
-
-    if (result.len > len) {
-        a->pages[result_i].off += len;
-        a->pages[result_i].len -= len;
-        return result.off;
-    }
-
-    for (size_t i = result_i; i + 1 < a->len; ++i)
-        a->pages[i] = a->pages[i + 1];
-    a->len--;
-
-    _alloc_page_shift(r, a);
-
-    return result.off;
+    return ilka_grow(r, len);
 }
 
 static void _alloc_page_free(
-        struct ilka_region *r, struct alloc_page *a, ilka_off_t off, size_t len)
+        struct ilka_region *r, ilka_off_t prev_off, ilka_off_t off, size_t len)
 {
     ilka_assert(len > alloc_bucket_max_len,
             "page free is too small: %lu > %lu", len, alloc_bucket_max_len);
     len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
-    size_t i = 0;
-    bool added = false;
-    for (; i < a->len; ++i) {
-        if (a->pages[i].off + a->pages[i].len == off) {
-            a->pages[i].len += len;
-            added = true;
-            break;
+    const ilka_off_t *prev = ilka_read(r, prev_off, sizeof(ilka_off_t));
+    ilka_off_t node_off = *prev;
+
+    while (node_off) {
+        const struct alloc_page_node *node =
+            ilka_read(r, node_off, sizeof(struct alloc_page_node));
+
+        if (off + len == node->off) {
+            struct alloc_page_node *wnode =
+                ilka_write(r, node_off, sizeof(struct alloc_page_node));
+            wnode->off = off;
+            wnode->len += len;
+            return;
         }
 
-        if (off + len == a->pages[i].off) {
-            a->pages[i].off -= len;
-            a->pages[i].len += len;
-            added = true;
-            break;
+        if (node->off + node->len == off ) {
+            struct alloc_page_node *wnode =
+                ilka_write(r, node_off, sizeof(struct alloc_page_node));
+            wnode->len += len;
+
+            if (wnode->next) {
+                const struct alloc_page_node *next =
+                    ilka_read(r, wnode->next, sizeof(struct alloc_page_node));
+
+                if (wnode->off + wnode->len == next->off) {
+                    wnode->len += next->len;
+                    wnode->next = next->next;
+                }
+            }
+
+            return;
         }
 
-        if (off < a->pages[i].off) break;
+        if (off < node->off) {
+            prev_off = node_off;
+            node_off = node->next;
+            continue;
+        }
+
+        if (node->off < off) {
+            struct alloc_page_node *wnode =
+                ilka_write(r, node_off, sizeof(struct alloc_page_node));
+            *wnode = (struct alloc_page_node) {node->next, off, len};
+
+            ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
+            *wprev = off;
+            return;
+        }
+
+        ilka_assert(false, "unreachable");
     }
-
-    if (added) {
-        if (i + 1 == a->len) return;
-        if (a->pages[i].off + a->pages[i].len != a->pages[i+1].off) return;
-
-        // merge with our next neighbour.
-        a->pages[i].len += a->pages[i+1].len;
-
-        // shift all the entries one to the left.
-        i++;
-        for (; i+1 < a->len; ++i) a->pages[i] = a->pages[i+1];
-
-        a->len--;
-
-        _alloc_page_shift(r, a);
-
-        return;
-    }
-
-    // shift all the entries to the right to make space for our new entry.
-    struct alloc_page_node tmp;
-    for (; i < a->len; ++i) {
-        tmp = a->pages[i];
-        a->pages[i] = (struct alloc_page_node) {off, len};
-        off = tmp.off;
-        len = tmp.off;
-    }
-
-    if (a->len < a->cap) {
-        a->pages[a->len] = (struct alloc_page_node) { off, len };
-        a->len++;
-        return;
-    }
-
-    struct alloc_page *next;
-    if (!a->next) {
-        a->next = ilka_grow(r, ILKA_PAGE_SIZE);
-        next = ilka_write(r, a->next, ILKA_PAGE_SIZE);
-        _alloc_page_init(next, ILKA_PAGE_SIZE);
-    }
-    else next = ilka_write(r, a->next, ILKA_PAGE_SIZE);
-
-    _alloc_page_free(r, next, off, len);
 }
 
 
@@ -192,35 +151,17 @@ struct ilka_alloc
 
 struct alloc_region
 {
-    size_t init;
+    ilka_off_t pages;
     ilka_off_t buckets[alloc_buckets];
 };
-
-static struct alloc_page * _alloc_pages(struct alloc_region *a)
-{
-    return (struct alloc_page *)(a + 1);
-}
 
 static struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
 {
     struct ilka_alloc * a = calloc(1, sizeof(struct ilka_alloc));
+
     a->region = r;
     a->start = start;
     slock_init(&a->lock);
-
-    const struct alloc_region * ar =
-        ilka_read(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
-
-    if (!ar->init) {
-        struct alloc_region * ar =
-            ilka_write(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
-
-        ar->init = 1;
-
-        size_t pages_len =
-                (alloc_min_pages * ILKA_PAGE_SIZE) - sizeof(struct alloc_region);
-        _alloc_page_init(_alloc_pages(ar), pages_len);
-    }
 
     return a;
 }
@@ -245,7 +186,7 @@ static ilka_off_t _alloc_bucket_fill(
     ilka_off_t page;
     {
         slock_lock(&a->lock);
-        page = _alloc_page_new(a->region, _alloc_pages(ar), ILKA_PAGE_SIZE);
+        page = _alloc_page_new(a->region, a->start, ILKA_PAGE_SIZE);
         slock_unlock(&a->lock);
     }
 
@@ -269,11 +210,11 @@ static ilka_off_t _alloc_bucket_fill(
 
 static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 {
-    struct alloc_region *ar =
-        ilka_write(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
-
     if (len > alloc_bucket_max_len)
-        return _alloc_page_new(a->region, _alloc_pages(ar), len);
+        return _alloc_page_new(a->region, a->start, len);
+
+    struct alloc_region *ar =
+        ilka_write(a->region, a->start, sizeof(struct alloc_region));
 
     size_t bucket = _alloc_bucket(&len);
 
@@ -294,13 +235,13 @@ static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 
 static void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
 {
-    struct alloc_region *ar =
-        ilka_write(a->region, a->start, alloc_min_pages * ILKA_PAGE_SIZE);
-
     if (len > alloc_bucket_max_len) {
-        _alloc_page_free(a->region, _alloc_pages(ar), off, len);
+        _alloc_page_free(a->region, a->start, off, len);
         return;
     }
+
+    struct alloc_region *ar =
+        ilka_write(a->region, a->start, sizeof(struct alloc_region));
 
     size_t bucket = _alloc_bucket(&len);
 

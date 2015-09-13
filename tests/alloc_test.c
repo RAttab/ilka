@@ -13,9 +13,9 @@
 
 enum
 {
-    blocks = 100,
+    blocks = 10,
     allocs = 100 * blocks,
-    max_size = 2048 - 1,
+    max_size = 128,
 };
 
 struct alloc_node
@@ -29,6 +29,23 @@ struct alloc_node
 // page test
 // -----------------------------------------------------------------------------
 
+inline void fill_page(
+        struct ilka_region *r, ilka_off_t off, size_t len, size_t value)
+{
+    size_t *data = ilka_write(r, off, len);
+    for (size_t i = 0; i < len / sizeof(size_t); ++i) data[i] = value;
+}
+
+#define check_page(r, off, len)                                         \
+    do {                                                                \
+        size_t *data = ilka_write(r, off, len);                         \
+        size_t value = data[0];                                         \
+        for (size_t i = 1; i < len / sizeof(size_t); ++i) {             \
+            ilka_assert(data[i] == value,                               \
+                    "wrong value in page: %lu != %lu", value, data[i]); \
+        }                                                               \
+    } while(false)
+
 void run_page_test(struct ilka_region *r, int id)
 {
     ilka_srand(id + 1);
@@ -38,15 +55,7 @@ void run_page_test(struct ilka_region *r, int id)
         size_t i = ilka_rand_range(0, blocks);
 
         if (nodes[i].off) {
-            size_t *data = ilka_write(r, nodes[i].off, nodes[i].len);
-
-            size_t v = data[0];
-            for (size_t i = 1; i < nodes[i].len / sizeof(size_t); ++i) {
-                ilka_assert(data[i] == v,
-                        "wrong value in page: %lu != %lu", v, data[i]);
-            }
-            memset(data, 0, nodes[i].len);
-
+            check_page(r, nodes[i].off, nodes[i].len);
             ilka_free(r, nodes[i].off, nodes[i].len);
             nodes[i] = (struct alloc_node) {0};
         }
@@ -54,19 +63,13 @@ void run_page_test(struct ilka_region *r, int id)
             size_t max = ilka_rand_range(2, max_size);
             nodes[i].len = ilka_rand_range(1, max) * ILKA_PAGE_SIZE;
             nodes[i].off = ilka_alloc(r, nodes[i].len);
-
-            char *data = ilka_write(r, nodes[i].off, nodes[i].len);
-            for (size_t i = 0; i < nodes[i].len; ++i)
-                ilka_assert(!data[i], "allocated page must but nil");
-
-            size_t *ldata = (size_t *) data;
-            for (size_t i = 0; i < nodes[i].len / sizeof(size_t); ++i)
-                ldata[i] = alloc;
+            fill_page(r, nodes[i].off, nodes[i].len, alloc);
         }
     }
 
     for (size_t i = 0; i < blocks; ++i) {
         if (!nodes[i].off) continue;
+        check_page(r, nodes[i].off, nodes[i].len);
         ilka_free(r, nodes[i].off, nodes[i].len);
     }
 }
