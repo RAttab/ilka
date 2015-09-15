@@ -23,6 +23,7 @@ struct ilka_options
     bool read_only;
     bool huge_tlb;
     bool populate;
+    size_t vma_reserved;
 };
 
 

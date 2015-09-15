@@ -53,6 +53,7 @@ struct ilka_region
     size_t len;
     void *start;
 
+    struct ilka_mmap mmap;
     struct ilka_persist *persist;
     struct ilka_alloc *alloc;
     struct ilka_epoch *epoch;
@@ -74,7 +75,8 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     r->options = *options;
     r->fd = file_open(file, &r->options);
     r->len = file_grow(r->fd, ilka_min_size);
-    r->start = mmap_map(r->fd, r->len, &r->options);
+
+    mmap_init(&r->mmap, r->fd, r->len, &r->options);
     r->persist = persist_init(r, r->file);
 
     const struct meta * meta = ilka_read(r, 0, sizeof(struct meta));
@@ -105,8 +107,7 @@ void ilka_close(struct ilka_region *r)
     epoch_close(r->epoch);
     alloc_close(r->alloc);
     persist_close(r->persist);
-
-    mmap_unmap(r->start, r->len);
+    mmap_close(&r->mmap);
     file_close(r->fd);
 }
 
@@ -120,14 +121,7 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     size_t new_len = old_len + len;
 
     file_grow(r->fd, new_len);
-    if (!mmap_remap_soft(r->start, old_len, new_len)) {
-        ilka_world_stop(r);
-
-        void *new_start = mmap_remap_hard(r->start, old_len, new_len);
-        ilka_atomic_store(&r->start, new_start, morder_relaxed);
-
-        ilka_world_resume(r);
-    }
+    mmap_remap(&r->mmap, old_len, new_len);
 
     ilka_atomic_store(&r->len, new_len, morder_relaxed);
 
@@ -136,25 +130,14 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     return old_len;
 }
 
-static void * _ilka_access(struct ilka_region *r, ilka_off_t off, size_t len)
-{
-    size_t rlen = ilka_atomic_load(&r->len, morder_relaxed);
-    ilka_assert(off + len <= rlen,
-            "invalid read pointer: %p + %p = %p > %p",
-            (void*) off, (void*) len, (void*) (off + len), (void*) rlen);
-
-    void *start = ilka_atomic_load(&r->start, morder_relaxed);
-    return ((uint8_t*) start) + off;
-}
-
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    return _ilka_access(r, off, len);
+    return mmap_access(&r->mmap, off, len);
 }
 
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    void *ptr = _ilka_access(r, off, len);
+    void *ptr = mmap_access(&r->mmap, off, len);
     persist_mark(r->persist, off, len);
     return ptr;
 }
@@ -192,6 +175,7 @@ void ilka_exit(struct ilka_region *r, ilka_epoch_t epoch)
 void ilka_world_stop(struct ilka_region *r)
 {
     epoch_world_stop(r->epoch);
+    mmap_coalesce(&r->mmap);
 }
 
 void ilka_world_resume(struct ilka_region *r)
