@@ -62,8 +62,8 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, check_bitfield_next);
-    ilka_tc(s, check_leading_bit);
+    ilka_tc(s, check_bitfield_next, true);
+    ilka_tc(s, check_leading_bit, true);
 }
 
 int main(void)

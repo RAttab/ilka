@@ -273,15 +273,15 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, basics_test);
-    ilka_tc(s, complex_test);
-    ilka_tc(s, skip_test);
-    ilka_tc(s, edge_test);
-    ilka_tc(s, endian_test);
+    ilka_tc(s, basics_test, true);
+    ilka_tc(s, complex_test, true);
+    ilka_tc(s, skip_test, true);
+    ilka_tc(s, edge_test, true);
+    ilka_tc(s, endian_test, true);
 
-    ilka_tc_signal(s, bound_test_1, SIGABRT);
-    ilka_tc_signal(s, bound_test_2, SIGABRT);
-    ilka_tc_signal(s, bound_test_3, SIGABRT);
+    ilka_tc_signal(s, bound_test_1, SIGABRT, true);
+    ilka_tc_signal(s, bound_test_2, SIGABRT, true);
+    ilka_tc_signal(s, bound_test_3, SIGABRT, true);
 }
 
 int main(void)

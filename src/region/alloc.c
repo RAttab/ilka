@@ -18,7 +18,7 @@
 
 #define alloc_min_pages 1
 
-#define alloc_bucket_min_len 8UL
+#define alloc_bucket_min_len sizeof(uint64_t)
 #define alloc_bucket_max_len 2048UL
 #define alloc_buckets                           \
     __builtin_popcountll(                       \
@@ -190,10 +190,10 @@ static ilka_off_t _alloc_bucket_fill(
         slock_unlock(&a->lock);
     }
 
-    ilka_off_t start = page + len;
+    ilka_off_t start = page;
     ilka_off_t end = start + (nodes * len);
 
-    for (ilka_off_t node = start; node + len < end; node += len) {
+    for (ilka_off_t node = start + len; node + len < end; node += len) {
         ilka_off_t *pnode = ilka_write(a->region, node, sizeof(ilka_off_t));
         *pnode = node + len;
     }
@@ -227,7 +227,7 @@ static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
 
     do {
         if (!head) {
-            head = _alloc_bucket_fill(a, ar, bucket, len);
+            head = _alloc_bucket_fill(a, ar, len, bucket);
             break;
         }
 

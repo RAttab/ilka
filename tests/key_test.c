@@ -313,11 +313,11 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, empty_test);
-    ilka_tc(s, read_write_test);
-    ilka_tc(s, bits_test);
-    ilka_tc(s, cmp_test);
-    ilka_tc(s, endian_test);
+    ilka_tc(s, empty_test, true);
+    ilka_tc(s, read_write_test, true);
+    ilka_tc(s, bits_test, true);
+    ilka_tc(s, cmp_test, true);
+    ilka_tc(s, endian_test, true);
 }
 
 int main(void)

@@ -11,12 +11,10 @@
 
 #include <stdlib.h>
 
-enum
-{
-    blocks = 10,
-    allocs = 100 * blocks,
-    max_size = 128,
-};
+
+// -----------------------------------------------------------------------------
+// utils
+// -----------------------------------------------------------------------------
 
 struct alloc_node
 {
@@ -24,19 +22,14 @@ struct alloc_node
     size_t len;
 };
 
-
-// -----------------------------------------------------------------------------
-// page test
-// -----------------------------------------------------------------------------
-
-inline void fill_page(
+inline void fill_block(
         struct ilka_region *r, ilka_off_t off, size_t len, size_t value)
 {
     size_t *data = ilka_write(r, off, len);
     for (size_t i = 0; i < len / sizeof(size_t); ++i) data[i] = value;
 }
 
-#define check_page(r, off, len)                                         \
+#define check_block(r, off, len)                                        \
     do {                                                                \
         size_t *data = ilka_write(r, off, len);                         \
         size_t value = data[0];                                         \
@@ -46,40 +39,60 @@ inline void fill_page(
         }                                                               \
     } while(false)
 
-void run_page_test(struct ilka_region *r, int id)
+void run_alloc_test(
+        struct ilka_region *r, int id, size_t blocks, size_t allocs, size_t mul)
 {
     ilka_srand(id + 1);
-    struct alloc_node nodes[blocks] = {{0}};
+    struct alloc_node *nodes = calloc(blocks, sizeof(struct alloc_node));
 
     for (size_t alloc = 0; alloc < allocs; ++alloc) {
         size_t i = ilka_rand_range(0, blocks);
 
         if (nodes[i].off) {
-            check_page(r, nodes[i].off, nodes[i].len);
+            check_block(r, nodes[i].off, nodes[i].len);
             ilka_free(r, nodes[i].off, nodes[i].len);
             nodes[i] = (struct alloc_node) {0};
         }
         else {
-            size_t max = ilka_rand_range(2, max_size);
-            nodes[i].len = ilka_rand_range(1, max) * ILKA_PAGE_SIZE;
+            size_t max = ilka_rand_range(2, 128);
+            nodes[i].len = ilka_rand_range(1, max) * mul;
             nodes[i].off = ilka_alloc(r, nodes[i].len);
-            fill_page(r, nodes[i].off, nodes[i].len, alloc);
+            fill_block(r, nodes[i].off, nodes[i].len, alloc);
         }
     }
 
     for (size_t i = 0; i < blocks; ++i) {
         if (!nodes[i].off) continue;
-        check_page(r, nodes[i].off, nodes[i].len);
+        check_block(r, nodes[i].off, nodes[i].len);
         ilka_free(r, nodes[i].off, nodes[i].len);
     }
+
+    free(nodes);
 }
+
+
+// -----------------------------------------------------------------------------
+// tests
+// -----------------------------------------------------------------------------
 
 START_TEST(page_test_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    run_page_test(r, 0);
+    run_alloc_test(r, 0, 20, 20 * 100, ILKA_PAGE_SIZE);
+
+    ilka_close(r);
+}
+END_TEST
+
+
+START_TEST(block_test_st)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    run_alloc_test(r, 0, 20, 20 * 100, sizeof(uint64_t));
 
     ilka_close(r);
 }
@@ -92,7 +105,8 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, page_test_st);
+    ilka_tc(s, page_test_st, true);
+    ilka_tc(s, block_test_st, false);
 }
 
 int main(void)
