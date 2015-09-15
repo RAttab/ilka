@@ -5,6 +5,7 @@
 
 #include "check.h"
 #include "utils/arch.h"
+#include "utils/bits.h"
 #include "utils/rand.h"
 #include "utils/error.h"
 #include "region/region.h"
@@ -22,18 +23,27 @@ struct alloc_node
     size_t len;
 };
 
+inline size_t cap_len(size_t len)
+{
+    if (len >= ILKA_PAGE_SIZE) return len;
+    if (len < sizeof(uint64_t)) return sizeof(uint64_t);
+    return ceil_pow2(len);
+}
+
 inline void fill_block(
         struct ilka_region *r, ilka_off_t off, size_t len, size_t value)
 {
+    len = cap_len(len);
     size_t *data = ilka_write(r, off, len);
     for (size_t i = 0; i < len / sizeof(size_t); ++i) data[i] = value;
 }
 
 #define check_block(r, off, len)                                        \
     do {                                                                \
-        size_t *data = ilka_write(r, off, len);                         \
+        size_t len_ = cap_len(len);                                     \
+        const size_t *data = ilka_read(r, off, len_);                   \
         size_t value = data[0];                                         \
-        for (size_t i = 1; i < len / sizeof(size_t); ++i) {             \
+        for (size_t i = 1; i < len_ / sizeof(size_t); ++i) {            \
             ilka_assert(data[i] == value,                               \
                     "wrong value in page: %lu != %lu", value, data[i]); \
         }                                                               \
@@ -92,7 +102,7 @@ START_TEST(block_test_st)
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    run_alloc_test(r, 0, 20, 20 * 100, sizeof(uint64_t));
+    run_alloc_test(r, 0, 100, 100 * 100, 1);
 
     ilka_close(r);
 }
@@ -106,7 +116,7 @@ END_TEST
 void make_suite(Suite *s)
 {
     ilka_tc(s, page_test_st, true);
-    ilka_tc(s, block_test_st, false);
+    ilka_tc(s, block_test_st, true);
 }
 
 int main(void)
