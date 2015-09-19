@@ -4,6 +4,7 @@
 */
 
 #include "region.h"
+#include "utils/compiler.h"
 
 #include <unistd.h>
 #include <sys/wait.h>
@@ -31,16 +32,16 @@ struct ilka_persist
     struct persist_node *head;
 };
 
-static struct ilka_persist * persist_init(
-        struct ilka_region *r, const char *file)
+static bool persist_init(
+        struct ilka_persist *p, struct ilka_region *r, const char *file)
 {
-    struct ilka_persist *p = calloc(1, sizeof(struct ilka_persist));
+    memset(p, 0, sizeof(struct ilka_persist));
 
     p->region = r;
     p->file = file;
     slock_init(&p->lock);
 
-    return p;
+    return true;
 }
 
 static void persist_close(struct ilka_persist *p)
@@ -51,13 +52,16 @@ static void persist_close(struct ilka_persist *p)
         free(head);
         head = next;
     }
-
-    free(p);
 }
 
-static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
+static bool persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
 {
     struct persist_node *node = calloc(1, sizeof(struct persist_node));
+    if (!node) {
+        ilka_fail("out-of-memory for persist node: %lu", sizeof(struct persist_node));
+        return false;
+    }
+
     node->off = off;
     node->len = len;
 
@@ -65,37 +69,53 @@ static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
     do {
         node->next = head;
     } while (ilka_atomic_cmp_xchg(&p->head, &head, node, morder_relaxed));
+
+    return true;
 }
 
-static void _persist_wait(pid_t pid) 
+static bool _persist_wait(pid_t pid)
 {
     int status;
     do {
-        if (waitpid(pid, &status, WUNTRACED) == -1)
-            ilka_error_errno("unable to wait on persist process: %d", pid);
+        if (waitpid(pid, &status, WUNTRACED) == -1) {
+            ilka_fail_errno("unable to wait on persist process: %d", pid);
+            return false;
+        }
     } while (!WIFEXITED(status) && !WIFSIGNALED(status));
 
     if (WIFEXITED(status)) {
-        if (!WEXITSTATUS(status)) return;
-        ilka_error("persist process returned error: %d", WEXITSTATUS(status));
+        if (!WEXITSTATUS(status)) return false;
+
+        ilka_fail("persist process returned error: %d", WEXITSTATUS(status));
+        return false;
     }
     else if (WIFSIGNALED(status)) {
-        ilka_error("persist process signaled: %d", WTERMSIG(status));
+        ilka_fail("persist process signaled: %d", WTERMSIG(status));
+        return false;
     }
+
+    return true;
 }
 
-static void persist_save(struct ilka_persist *p)
+static bool persist_save(struct ilka_persist *p)
 {
     struct persist_node *head = ilka_atomic_xchg(&p->head, NULL, morder_relaxed);
-    if (!head) return;
+    if (!head) return true;
 
     slock_lock(&p->lock);
+
     ilka_world_stop(p->region);
 
     pid_t pid = fork();
-    if (pid == -1) ilka_error_errno("unable to fork for persist");
 
     ilka_world_resume(p->region);
+
+    if (pid == -1) {
+        ilka_fail_errno("unable to fork for persist");
+        slock_unlock(&p->lock);
+        return false;
+    }
+
 
     if (pid) {
         while (head) {
@@ -104,19 +124,25 @@ static void persist_save(struct ilka_persist *p)
             head = next;
         }
 
-        _persist_wait(pid);
+        bool ret = _persist_wait(pid);
         slock_unlock(&p->lock);
+
+        return ret;
     }
 
     else {
-        struct ilka_journal *j = journal_init(p->region, p->file);
+        struct ilka_journal j;
+        if (!journal_init(&j, p->region, p->file)) ilka_abort();
 
         while (head) {
-            journal_add(j, head->off, head->len);
+            if (!journal_add(&j, head->off, head->len)) ilka_abort();
             head = head->next;
         }
 
-        journal_finish(j);
+        if (!journal_finish(&j)) ilka_abort();
+
         exit(0);
     }
+
+    ilka_unreachable();
 }

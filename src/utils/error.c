@@ -16,28 +16,49 @@
 // error
 // -----------------------------------------------------------------------------
 
-void ilka_verror(const char *file, int line, const char *fmt, ...)
+__thread struct ilka_error ilka_err = { 0 };
+
+void ilka_abort()
+{
+    ilka_perror(&ilka_err);
+    abort();
+}
+
+void ilka_perror(struct ilka_error *err)
+{
+    if (!err->errno_)
+        printf("%s:%d: %s\n", err->file, err->line, err->msg);
+    else {
+        printf("%s:%d: %s - %s(%d)\n",
+                err->file, err->line, err->msg,
+                strerror(err->errno_), err->errno_);
+    }
+}
+
+void ilka_vfail(const char *file, int line, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
 
-    char buf[1024];
-    (void) vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+    ilka_err = (struct ilka_error) { .errno_ = 0, .file = file, .line = line };
+    (void) vsnprintf(ilka_err.msg, ILKA_ERR_MSG_CAP, fmt, args);
 
-    printf("%s:%d: %s\n", file, line, buf);
-    abort();
+    if (ilka_abort_on_fail) {
+        ilka_perror(&ilka_err);
+        ilka_abort();
+    }
 }
 
-void ilka_verror_errno(const char *file, int line, const char *fmt, ...)
+void ilka_vfail_errno(const char *file, int line, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
 
-    char buf[1024];
-    (void) vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+    ilka_err = (struct ilka_error) { .errno_ = errno, .file = file, .line = line };
+    (void) vsnprintf(ilka_err.msg, ILKA_ERR_MSG_CAP, fmt, args);
 
-    printf("%s:%d: %s - %s(%d)\n", file, line, buf, strerror(errno), errno);
-    abort();
+    if (ilka_abort_on_fail) {
+        ilka_perror(&ilka_err);
+        ilka_abort();
+    }
 }
-
-

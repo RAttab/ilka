@@ -61,7 +61,8 @@ static void deltree(const char *path)
     DIR *dir = opendir(path);
     if (!dir) {
         if (errno == ENOENT) return;
-        ilka_error_errno("unable to opendir: %s", path);
+        ilka_fail_errno("unable to opendir: %s", path);
+        ilka_abort();
     }
 
     size_t path_len = strlen(path) + 1;
@@ -84,18 +85,26 @@ static void deltree(const char *path)
             break;
 
         case DT_REG:
-            if (unlink(child) == -1)
-                ilka_error_errno("unable to unlink: %s", child);
+            if (unlink(child) == -1) {
+                ilka_fail_errno("unable to unlink: %s", child);
+                ilka_abort();
+            }
             break;
 
         default:
-            ilka_error("unknown dirent type '%d' for '%s'", entry->d_type, path);
+            ilka_fail("unknown dirent type '%d' for '%s'", entry->d_type, path);
+            ilka_abort();
         };
     }
 
-    if (closedir(dir) == -1) ilka_error_errno("unable to closedir: %s", path);
-    if (rmdir(path) == -1 && errno != ENOENT)
-        ilka_error_errno("unable to rmdir: %s", path);
+    if (closedir(dir) == -1) {
+        ilka_fail_errno("unable to closedir: %s", path);
+        ilka_abort();
+    }
+    if (rmdir(path) == -1 && errno != ENOENT) {
+        ilka_fail_errno("unable to rmdir: %s", path);
+        ilka_abort();
+    }
 }
 
 
@@ -105,15 +114,27 @@ static char cwd[1024] = {0};
 void ilka_setup()
 {
     deltree(tpath);
-    if (mkdir(tpath, 0755) == -1 && errno != EEXIST)
-        ilka_error_errno("unable to mkdir: %s", tpath);
+    if (mkdir(tpath, 0755) == -1 && errno != EEXIST) {
+        ilka_fail_errno("unable to mkdir: %s", tpath);
+        ilka_abort();
+    }
 
-    if (!getcwd(cwd, sizeof(cwd))) ilka_error_errno("unable to getcwd");
-    if (chdir(tpath) == -1) ilka_error_errno("unable to chdir: %s", tpath);
+    if (!getcwd(cwd, sizeof(cwd))) {
+        ilka_fail_errno("unable to getcwd");
+        ilka_abort();
+    }
+
+    if (chdir(tpath) == -1) {
+        ilka_fail_errno("unable to chdir: %s", tpath);
+        ilka_abort();
+    }
 }
 
 void ilka_teardown()
 {
-    if (chdir(cwd) == -1) ilka_error_errno("unable to chdir: %s", tpath);
+    if (chdir(cwd) == -1) {
+        ilka_fail_errno("unable to chdir: %s", tpath);
+        ilka_abort();
+    }
     deltree(tpath);
 }

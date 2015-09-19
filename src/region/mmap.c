@@ -38,13 +38,17 @@ struct ilka_mmap
 static void * _mmap_map(struct ilka_mmap *m, ilka_off_t off, size_t len)
 {
     if (m->anon_len < m->reserved) {
-        if (m->anon && munmap(m->anon, m->anon_len) == -1)
-            ilka_error_errno("unable to munmap anon");
+        if (m->anon && munmap(m->anon, m->anon_len) == -1) {
+            ilka_fail_errno("unable to munmap anon");
+            return NULL;
+        }
 
         m->anon_len = m->reserved;
         m->anon = mmap(NULL, m->anon_len, m->prot, MAP_ANON | MAP_PRIVATE, -1, 0);
-        if (m->anon == MAP_FAILED)
-            ilka_error_errno("unable to mmap anon: %p", ((void*) m->anon_len));
+        if (m->anon == MAP_FAILED) {
+            ilka_fail_errno("unable to mmap anon: %p", ((void*) m->anon_len));
+            return NULL;
+        }
     }
 
     void *ptr;
@@ -57,14 +61,15 @@ static void * _mmap_map(struct ilka_mmap *m, ilka_off_t off, size_t len)
     }
 
     if (ptr == MAP_FAILED) {
-        ilka_error_errno("unable to mmap '%p' at '%p' for length '%p'",
+        ilka_fail_errno("unable to mmap '%p' at '%p' for length '%p'",
                 ptr, (void*) off, (void*) len);
+        return NULL;
     }
 
     return ptr;
 }
 
-static bool _mmap_remap(
+static int _mmap_remap(
         struct ilka_mmap *m, void *ptr, size_t old_len, size_t new_len)
 {
     if (new_len > m->anon_len) return false;
@@ -78,19 +83,22 @@ static bool _mmap_remap(
     // on moving the entire region.
 
     size_t diff = new_len - old_len;
-    if (munmap(m->anon, diff) == -1) ilka_error_errno("unable to munmap anon");
+    if (munmap(m->anon, diff) == -1) {
+        ilka_fail_errno("unable to munmap anon");
+        return -1;
+    }
     m->anon = ((uint8_t *) m->anon) + diff;
     m->anon_len -= diff;
 
-    if (mremap(ptr, old_len, new_len, 0) != MAP_FAILED) return true;
-    if (errno == ENOMEM) return false;
+    if (mremap(ptr, old_len, new_len, 0) != MAP_FAILED) return 1;
+    if (errno == ENOMEM) return 0;
 
-    ilka_error_errno("unable to remap '%p' from '%p' to '%p'",
+    ilka_fail_errno("unable to remap '%p' from '%p' to '%p'",
             ptr, (void*) old_len, (void*) new_len);
-    return true;
+    return -1;
 }
 
-static void mmap_init(
+static bool mmap_init(
         struct ilka_mmap *m, int fd, size_t len, struct ilka_options *options)
 {
     memset(m, 0, sizeof(struct ilka_mmap));
@@ -107,24 +115,29 @@ static void mmap_init(
 
     m->head.len = len;
     m->head.ptr = _mmap_map(m, 0, len);
+
+    return m->head.ptr != NULL;
 }
 
-static void mmap_close(struct ilka_mmap *m)
+static bool mmap_close(struct ilka_mmap *m)
 {
     struct mmap_node *node = &m->head;
     do {
         if (munmap(node->ptr, node->len) == -1) {
-            ilka_error_errno("unable to unmap '%p' with length '%p'",
-                    m->head.ptr, (void *) node->len);
+            ilka_fail_errno("unable to unmap '%p' with length '%p'",
+                    node->ptr, (void *) node->len);
+            return false;
         }
 
         struct mmap_node *next = node->next;
         if (node != &m->head) free(node);
         node = next;
     } while (node);
+
+    return true;
 }
 
-static void mmap_remap(struct ilka_mmap *m, size_t old, size_t new)
+static bool mmap_remap(struct ilka_mmap *m, size_t old, size_t new)
 {
     size_t off = 0;
     struct mmap_node *node = &m->head;
@@ -136,23 +149,37 @@ static void mmap_remap(struct ilka_mmap *m, size_t old, size_t new)
     ilka_assert(off + node->len == old, "inconsistent size: %p + %p != %p",
             (void *) off, (void *) node->len, (void *) old);
 
-    if (_mmap_remap(m, node->ptr, node->len, new - off)) {
+    int ret = _mmap_remap(m, node->ptr, node->len, new - off);
+    if (ret == -1) return false;
+    if (ret) {
         node->len = new - off;
-        return;
+        return true;
     }
 
     off += node->len;
 
     struct mmap_node *tail = calloc(1, sizeof(struct mmap_node));
+    if (!tail) {
+        ilka_fail("out-of-memory for new remap node");
+        return false;
+    }
+
     tail->len = new - off;
     tail->ptr = _mmap_map(m, off, tail->len);
+    if (!tail->ptr) goto fail;
 
     ilka_atomic_store(&node->next, tail, morder_release);
+
+    return true;
+
+  fail:
+    free(tail);
+    return false;
 }
 
-static void mmap_coalesce(struct ilka_mmap *m)
+static bool mmap_coalesce(struct ilka_mmap *m)
 {
-    if (!m->head.next) return;
+    if (!m->head.next) return true;
 
     size_t len = 0;
     struct mmap_node *node = &m->head;
@@ -164,9 +191,15 @@ static void mmap_coalesce(struct ilka_mmap *m)
 
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     uint8_t *ptr = mmap(NULL, len + m->reserved, 0, flags, 0, 0);
-    if (ptr == MAP_FAILED) ilka_error_errno("unable to create anonymous mapping");
+    if (ptr == MAP_FAILED) {
+        ilka_fail_errno("unable to create anonymous mapping");
+        return false;
+    }
 
-    if (munmap(m->anon, m->anon_len) == -1) ilka_error_errno("unable to munmap anon");
+    if (munmap(m->anon, m->anon_len) == -1) {
+        ilka_fail_errno("unable to munmap anon");
+        goto fail;
+    }
     m->anon = ((uint8_t*) ptr) + len;
     m->anon_len = m->reserved;
 
@@ -176,7 +209,7 @@ static void mmap_coalesce(struct ilka_mmap *m)
     do {
         int flags = MREMAP_MAYMOVE | MREMAP_FIXED;
         void *ret = mremap(node->ptr, node->len, node->len, flags, ptr + off);
-        if (ret == MAP_FAILED) ilka_error_errno("unable to mremap fixed");
+        ilka_assert(ret != MAP_FAILED, "unable to mremap fixed - can't recover");
 
         off += node->len;
         struct mmap_node *next = node->next;
@@ -185,6 +218,11 @@ static void mmap_coalesce(struct ilka_mmap *m)
     } while (node);
 
     m->head = (struct mmap_node) { ptr, len, NULL };
+    return true;
+
+  fail:
+    munmap(ptr, len + m->reserved);
+    return false;
 }
 
 static void * mmap_access(struct ilka_mmap *m, ilka_off_t off, size_t len)
@@ -196,7 +234,10 @@ static void * mmap_access(struct ilka_mmap *m, ilka_off_t off, size_t len)
         size_t rlen = ilka_atomic_load(&node->len, morder_relaxed);
 
         if (ilka_likely(off_rel < rlen)) {
-            ilka_assert(off_rel + len <= rlen, "invalid cross-map access");
+            ilka_assert(off_rel + len <= rlen,
+                    "invalid cross-map access: %p + %p > %p",
+                    (void *) off_rel, (void *) len, (void *) rlen);
+
             return ((uint8_t*) node->ptr) + off_rel;
         }
 
@@ -206,6 +247,7 @@ static void * mmap_access(struct ilka_mmap *m, ilka_off_t off, size_t len)
             continue;
         }
 
-        ilka_error("out-of-bounds access: %p + %p", (void *) off, (void *) len);
+        ilka_fail("out-of-bounds access: %p + %p", (void *) off, (void *) len);
+        ilka_abort();
     }
 }

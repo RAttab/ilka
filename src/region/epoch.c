@@ -38,11 +38,13 @@ struct ilka_epoch
     struct epoch_node *defers[2];
 };
 
-struct ilka_epoch * epoch_init(struct ilka_region *r)
+bool epoch_init(struct ilka_epoch *e, struct ilka_region *r)
 {
-    struct ilka_epoch *e = calloc(1, sizeof(struct ilka_epoch));
+    memset(e, 0, sizeof(struct ilka_epoch));
+
     e->region = r;
-    return e;
+
+    return true;
 }
 
 static void epoch_close(struct ilka_epoch *e)
@@ -56,13 +58,16 @@ static void epoch_close(struct ilka_epoch *e)
             head = next;
         }
     }
-
-    free(e);
 }
 
-static void epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
+static bool epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
 {
     struct epoch_node *node = malloc(sizeof(struct epoch_node));
+    if (!node) {
+        ilka_fail("out-of-memory for defer node: %lu", sizeof(struct epoch_node));
+        return false;
+    }
+
     *node = (struct epoch_node) {off, len, 0};
 
     union epoch_state state;
@@ -73,6 +78,8 @@ static void epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
     do {
         node->next = old;
     } while (!ilka_atomic_cmp_xchg(&e->defers[i], &old, node, morder_relaxed));
+
+    return true;
 }
 
 static ilka_epoch_t epoch_enter(struct ilka_epoch *e)

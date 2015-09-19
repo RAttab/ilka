@@ -54,9 +54,9 @@ struct ilka_region
     void *start;
 
     struct ilka_mmap mmap;
-    struct ilka_persist *persist;
-    struct ilka_alloc *alloc;
-    struct ilka_epoch *epoch;
+    struct ilka_persist persist;
+    struct ilka_alloc alloc;
+    struct ilka_epoch epoch;
 };
 
 
@@ -69,19 +69,28 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     journal_recover(file);
 
     struct ilka_region *r = calloc(1, sizeof(struct ilka_region));
+    if (!r) {
+        ilka_fail("out-of-memory for ilka_region struct: %lu",
+                sizeof(struct ilka_region));
+        return NULL;
+    }
+
     slock_init(&r->lock);
 
     r->file = file;
     r->options = *options;
-    r->fd = file_open(file, &r->options);
-    r->len = file_grow(r->fd, ilka_min_size);
 
-    mmap_init(&r->mmap, r->fd, r->len, &r->options);
-    r->persist = persist_init(r, r->file);
+    if ((r->fd = file_open(file, &r->options)) == -1) goto fail_open;
+    if ((r->len = file_grow(r->fd, ilka_min_size)) == -1UL) goto fail_grow;
+    if (!mmap_init(&r->mmap, r->fd, r->len, &r->options)) goto fail_mmap;
+    if (!persist_init(&r->persist, r, r->file)) goto fail_persist;
 
     const struct meta * meta = ilka_read(r, 0, sizeof(struct meta));
     if (meta->magic != ilka_magic) {
-        if (!r->options.create) ilka_error("invalid magic for file '%s'", file);
+        if (!r->options.create) {
+            ilka_fail("invalid magic for file '%s'", file);
+            goto fail_magic;
+        }
 
         struct meta * m = ilka_write(r, 0, sizeof(struct meta));
         m->magic = ilka_magic;
@@ -90,25 +99,45 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     }
 
     if (meta->version != ilka_version) {
-        ilka_error("invalid version for file '%s': %lu != %lu",
+        ilka_fail("invalid version for file '%s': %lu != %lu",
                 file, meta->version, ilka_version);
+        goto fail_version;
     }
 
-    r->alloc = alloc_init(r, meta->alloc);
-    r->epoch = epoch_init(r);
+    if (!alloc_init(&r->alloc, r, meta->alloc)) goto fail_alloc;
+    if (!epoch_init(&r->epoch, r)) goto fail_epoch;
 
     return r;
+
+  fail_epoch:
+  fail_alloc:
+  fail_version:
+  fail_magic:
+    persist_close(&r->persist);
+
+  fail_persist:
+    mmap_close(&r->mmap);
+
+  fail_mmap:
+  fail_grow:
+    file_close(r->fd);
+
+  fail_open:
+    free(r);
+    return NULL;
 }
 
-void ilka_close(struct ilka_region *r)
+bool ilka_close(struct ilka_region *r)
 {
-    ilka_save(r);
+    if (!ilka_save(r)) return false;
 
-    epoch_close(r->epoch);
-    alloc_close(r->alloc);
-    persist_close(r->persist);
-    mmap_close(&r->mmap);
-    file_close(r->fd);
+    epoch_close(&r->epoch);
+    persist_close(&r->persist);
+
+    if (!mmap_close(&r->mmap)) return false;
+    if (!file_close(r->fd)) return false;
+
+    return true;
 }
 
 ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
@@ -138,47 +167,47 @@ const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     void *ptr = mmap_access(&r->mmap, off, len);
-    persist_mark(r->persist, off, len);
+    persist_mark(&r->persist, off, len);
     return ptr;
 }
 
-void ilka_save(struct ilka_region *r)
+bool ilka_save(struct ilka_region *r)
 {
-    persist_save(r->persist);
+    return persist_save(&r->persist);
 }
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 {
-    return alloc_new(r->alloc, len);
+    return alloc_new(&r->alloc, len);
 }
 
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    alloc_free(r->alloc, off, len);
+    alloc_free(&r->alloc, off, len);
 }
 
-void ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
+bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    epoch_defer_free(r->epoch, off, len);
+    return epoch_defer_free(&r->epoch, off, len);
 }
 
 ilka_epoch_t ilka_enter(struct ilka_region *r)
 {
-    return epoch_enter(r->epoch);
+    return epoch_enter(&r->epoch);
 }
 
 void ilka_exit(struct ilka_region *r, ilka_epoch_t epoch)
 {
-    epoch_exit(r->epoch, epoch);
+    epoch_exit(&r->epoch, epoch);
 }
 
 void ilka_world_stop(struct ilka_region *r)
 {
-    epoch_world_stop(r->epoch);
+    epoch_world_stop(&r->epoch);
     mmap_coalesce(&r->mmap);
 }
 
 void ilka_world_resume(struct ilka_region *r)
 {
-    epoch_world_resume(r->epoch);
+    epoch_world_resume(&r->epoch);
 }

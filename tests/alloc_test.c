@@ -3,6 +3,8 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
+#define ILKA_ABORT_ON_FAIL
+
 #include "check.h"
 #include "utils/arch.h"
 #include "utils/bits.h"
@@ -67,6 +69,8 @@ void run_alloc_test(
             size_t max = ilka_rand_range(2, 128);
             nodes[i].len = ilka_rand_range(1, max) * mul;
             nodes[i].off = ilka_alloc(r, nodes[i].len);
+            if (!nodes[i].off) ilka_abort();
+
             fill_block(r, nodes[i].off, nodes[i].len, alloc);
         }
     }

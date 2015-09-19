@@ -19,8 +19,10 @@
 
 static int file_open(const char *file, struct ilka_options *options)
 {
-    ilka_assert(options->open || options->create,
-            "must provide 'ilka_open' or 'ilka_create' to open '%s'", file);
+    if (!options->open && !options->create) {
+        ilka_fail("must provide 'ilka_open' or 'ilka_create' to open '%s'", file);
+        return -1;
+    }
 
     int flags = O_NOATIME;
 
@@ -31,34 +33,46 @@ static int file_open(const char *file, struct ilka_options *options)
     flags |= options->read_only ? O_RDONLY : O_RDWR;
 
     int fd = open(file, flags, 0764);
-    if (fd == -1) ilka_error_errno("unable to open '%s'", file);
+    if (fd == -1) {
+        ilka_fail_errno("unable to open '%s'", file);
+        return -1;
+    }
 
     return fd;
 }
 
-static void file_close(int fd)
+static bool file_close(int fd)
 {
-    if (close(fd) == -1)
-        ilka_error_errno("unable to close fd '%d'", fd);
+    if (close(fd) != -1) return true;
+
+    ilka_fail_errno("unable to close fd '%d'", fd);
+    return false;
 }
 
-static size_t file_len(int fd)
+static ssize_t file_len(int fd)
 {
     struct stat stat;
 
     int ret = fstat(fd, &stat);
-    if (ret == -1) ilka_error_errno("unable to stat fd '%d'", fd);
+    if (ret == -1) {
+        ilka_fail_errno("unable to stat fd '%d'", fd);
+        return -1;
+    }
 
     return stat.st_size;
 }
 
-static size_t file_grow(int fd, size_t len)
+static ssize_t file_grow(int fd, size_t len)
 {
-    size_t old = file_len(fd);
-    if (old >= len) return old;
+    ssize_t old = file_len(fd);
+    if (old == -1) return -1;
+    if ((size_t) old >= len) return old;
 
     int ret = ftruncate(fd, len);
-    if (ret == -1) ilka_error_errno("unable to truncate fd '%d'", fd);
+    if (ret == -1) {
+        ilka_fail_errno("unable to truncate fd '%d'", fd);
+        return -1;
+    }
 
     return len;
 }

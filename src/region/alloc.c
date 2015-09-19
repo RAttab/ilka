@@ -71,7 +71,7 @@ static ilka_off_t _alloc_page_new(
             return wnode->off + len;
         }
 
-        ilka_assert(false, "unreachable");
+        ilka_unreachable();
     }
 
     return ilka_grow(r, len);
@@ -155,20 +155,16 @@ struct alloc_region
     ilka_off_t buckets[alloc_buckets];
 };
 
-static struct ilka_alloc * alloc_init(struct ilka_region *r, ilka_off_t start)
+static bool alloc_init(
+        struct ilka_alloc *a, struct ilka_region *r, ilka_off_t start)
 {
-    struct ilka_alloc * a = calloc(1, sizeof(struct ilka_alloc));
+    memset(a, 0, sizeof(struct ilka_alloc));
 
     a->region = r;
     a->start = start;
     slock_init(&a->lock);
 
-    return a;
-}
-
-static void alloc_close(struct ilka_alloc *alloc)
-{
-    free(alloc);
+    return true;
 }
 
 static size_t _alloc_bucket(size_t *len)
@@ -189,6 +185,8 @@ static ilka_off_t _alloc_bucket_fill(
         page = _alloc_page_new(a->region, a->start, ILKA_PAGE_SIZE);
         slock_unlock(&a->lock);
     }
+
+    if (!page) return 0;
 
     ilka_off_t start = page;
     ilka_off_t end = start + (nodes * len);

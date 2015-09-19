@@ -36,17 +36,17 @@ typedef uint64_t ilka_off_t;
 typedef uint16_t ilka_epoch_t;
 
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
-void ilka_close(struct ilka_region *r);
+bool ilka_close(struct ilka_region *r);
 ilka_off_t ilka_grow(struct ilka_region *r, size_t len);
 
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len);
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len);
 
-void ilka_save(struct ilka_region *r);
+bool ilka_save(struct ilka_region *r);
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len);
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len);
-void ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len);
+bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len);
 
 ilka_epoch_t ilka_enter(struct ilka_region *r);
 void ilka_exit(struct ilka_region *r, ilka_epoch_t h);

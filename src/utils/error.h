@@ -14,23 +14,61 @@
 // error
 // -----------------------------------------------------------------------------
 
-void ilka_verror(const char *file, int line, const char *fmt, ...)
-    ilka_noreturn ilka_printf(3, 4);
+enum {
+#ifndef ILKA_ABORT_ON_FAIL
+    ilka_abort_on_fail = 0,
+#else
+    ilka_abort_on_fail = 1,
+#endif
+};
 
-void ilka_verror_errno(const char *file, int line, const char *fmt, ...)
-    ilka_noreturn ilka_printf(3, 4);
+#define ILKA_ERR_MSG_CAP 1024UL
 
-#define ilka_error(...)                                 \
-    ilka_verror(__FILE__, __LINE__, __VA_ARGS__)
+struct ilka_error
+{
+    const char *file;
+    int line;
 
-#define ilka_error_errno(...)                           \
-    ilka_verror_errno(__FILE__, __LINE__, __VA_ARGS__)
+    int errno_; // errno can be a macro hence the underscore.
+    char msg[ILKA_ERR_MSG_CAP];
+};
 
-#define ilka_assert(p, ...)                                     \
-    do {                                                        \
-        if (ilka_unlikely(!(p)))                                \
-            ilka_error(__VA_ARGS__);                            \
+extern __thread struct ilka_error ilka_err;
+
+void ilka_abort() ilka_noreturn;
+void ilka_perror(struct ilka_error *err);
+
+
+// -----------------------------------------------------------------------------
+// fail
+// -----------------------------------------------------------------------------
+
+void ilka_vfail(const char *file, int line, const char *fmt, ...)
+    ilka_printf(3, 4);
+
+void ilka_vfail_errno(const char *file, int line, const char *fmt, ...)
+    ilka_printf(3, 4);
+
+#define ilka_fail(...)                          \
+    ilka_vfail(__FILE__, __LINE__, __VA_ARGS__)
+
+#define ilka_fail_errno(...)                            \
+    ilka_vfail_errno(__FILE__, __LINE__, __VA_ARGS__)
+
+
+// -----------------------------------------------------------------------------
+// assert
+// -----------------------------------------------------------------------------
+
+#define ilka_assert(p, ...)                     \
+    do {                                        \
+        if (ilka_likely(p)) break;              \
+        ilka_fail(__VA_ARGS__);                 \
+        ilka_abort();                           \
     } while (0)
 
-#define ilka_todo()                                     \
-    ilka_error(__FUNCTION__ ": not yet implemented")
+#define ilka_todo()                                             \
+    do {                                                        \
+        ilka_fail(__FUNCTION__ ": not yet implemented");        \
+        ilka_abort();                                           \
+    } while (0)
