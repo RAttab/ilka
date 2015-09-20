@@ -14,14 +14,6 @@
 // error
 // -----------------------------------------------------------------------------
 
-enum {
-#ifndef ILKA_ABORT_ON_FAIL
-    ilka_abort_on_fail = 0,
-#else
-    ilka_abort_on_fail = 1,
-#endif
-};
-
 #define ILKA_ERR_MSG_CAP 1024UL
 
 struct ilka_error
@@ -42,6 +34,8 @@ void ilka_perror(struct ilka_error *err);
 // -----------------------------------------------------------------------------
 // fail
 // -----------------------------------------------------------------------------
+
+void ilka_dbg_abort_on_fail();
 
 void ilka_vfail(const char *file, int line, const char *fmt, ...)
     ilka_printf(3, 4);

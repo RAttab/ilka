@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 
 
@@ -35,6 +36,14 @@ void ilka_perror(struct ilka_error *err)
     }
 }
 
+
+// -----------------------------------------------------------------------------
+// fail
+// -----------------------------------------------------------------------------
+
+static bool abort_on_fail = 0;
+void ilka_dbg_abort_on_fail() { abort_on_fail = true; }
+
 void ilka_vfail(const char *file, int line, const char *fmt, ...)
 {
     va_list args;
@@ -43,7 +52,7 @@ void ilka_vfail(const char *file, int line, const char *fmt, ...)
     ilka_err = (struct ilka_error) { .errno_ = 0, .file = file, .line = line };
     (void) vsnprintf(ilka_err.msg, ILKA_ERR_MSG_CAP, fmt, args);
 
-    if (ilka_abort_on_fail) {
+    if (abort_on_fail) {
         ilka_perror(&ilka_err);
         ilka_abort();
     }
@@ -57,7 +66,7 @@ void ilka_vfail_errno(const char *file, int line, const char *fmt, ...)
     ilka_err = (struct ilka_error) { .errno_ = errno, .file = file, .line = line };
     (void) vsnprintf(ilka_err.msg, ILKA_ERR_MSG_CAP, fmt, args);
 
-    if (ilka_abort_on_fail) {
+    if (abort_on_fail) {
         ilka_perror(&ilka_err);
         ilka_abort();
     }
