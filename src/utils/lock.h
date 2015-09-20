@@ -20,7 +20,7 @@ void slock_lock(ilka_slock *l)
     uint64_t old;
     do {
         old = ilka_atomic_load(l, morder_relaxed);
-    } while (!ilka_atomic_cmp_xchg(l, &old, 1, morder_acquire));
+    } while (old || !ilka_atomic_cmp_xchg(l, &old, 1, morder_acquire));
 }
 
 void slock_unlock(ilka_slock *l)
