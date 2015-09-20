@@ -136,7 +136,7 @@ static bool _journal_write(int fd, const void *ptr, size_t len)
 {
     ssize_t ret = write(fd, ptr, len);
     if (ret == -1) {
-        ilka_fail_errno("unable to write to journal");
+        ilka_fail_errno("unable to write to journal: %p, %p", ptr, (void *) len);
         return false;
     }
 
