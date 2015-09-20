@@ -17,6 +17,9 @@ int ilka_tests(const char *name, ilka_make_suite_t make_suite);
 void ilka_setup();
 void ilka_teardown();
 
+void ilka_run_threads(void (*fn) (size_t, void *), void *data);
+void ilka_print_title(const char *title);
+
 enum { ilka_tc_timeout = 10 };
 
 #define ilka_tc_pre(suite, name, enabled)                       \
@@ -60,6 +63,3 @@ enum { ilka_tc_timeout = 10 };
     ilka_tc_pre(s, n, t);                               \
     tcase_add_loop_test(tc, n, exp, start, end);        \
     ilka_tc_post(s, n)
-
-
-void ilka_print_title(const char *title);

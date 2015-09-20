@@ -15,10 +15,11 @@
 #include <string.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <pthread.h>
 
 
 // -----------------------------------------------------------------------------
-// test utils
+// utils
 // -----------------------------------------------------------------------------
 
 static void config_runner(SRunner *runner)
@@ -55,6 +56,10 @@ void ilka_print_title(const char *title)
     printf("\n%s\n", buf);
 }
 
+
+// -----------------------------------------------------------------------------
+// fixture
+// -----------------------------------------------------------------------------
 
 static void deltree(const char *path)
 {
@@ -137,4 +142,62 @@ void ilka_teardown()
         ilka_abort();
     }
     deltree(tpath);
+}
+
+
+// -----------------------------------------------------------------------------
+// runners
+// -----------------------------------------------------------------------------
+
+size_t count_cpu()
+{
+    long count = sysconf(_SC_NPROCESSORS_ONLN);
+    if (count != -1) return count;
+
+    ilka_fail_errno("unable to call sysconf to get cpu count");
+    ilka_abort();
+}
+
+struct ilka_tdata
+{
+    size_t id;
+    pthread_t tid;
+
+    void *data;
+    void (*fn) (size_t, void *);
+};
+
+void *tdata_shim(void *args)
+{
+    struct ilka_tdata *tdata = (struct ilka_tdata *) args;
+
+    tdata->fn(tdata->id, tdata->data);
+
+    return NULL;
+}
+
+void ilka_run_threads(void (*fn) (size_t, void *), void *data)
+{
+    size_t n = count_cpu();
+    struct ilka_tdata *tdata = alloca(n * sizeof(struct ilka_tdata));
+
+    for (size_t i = 0; i < n; ++i) {
+        tdata[i].id = i;
+        tdata[i].fn = fn;
+        tdata[i].data = data;
+
+        int ret = pthread_create(&tdata[i].tid, NULL, tdata_shim, &tdata[i]);
+        if (ret == -1) {
+            ilka_fail_errno("unable to create test thread '%lu'", i);
+            ilka_abort();
+        }
+    }
+
+    for (size_t i = 0; i < n; ++i) {
+        int ret = pthread_join(tdata[i].tid, NULL);
+        if (ret == -1) {
+            ilka_fail_errno("unable to join test thread '%lu'", i);
+            ilka_abort();
+        }
+    }
 }
