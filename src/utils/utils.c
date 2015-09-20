@@ -7,4 +7,6 @@
 
 #include "error.c"
 #include "rand.c"
+#include "thread.c"
+#include "log.c"
 
