@@ -68,7 +68,7 @@ static bool persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
     struct persist_node *head = ilka_atomic_load(&p->head, morder_relaxed);
     do {
         node->next = head;
-    } while (ilka_atomic_cmp_xchg(&p->head, &head, node, morder_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&p->head, &head, node, morder_relaxed));
 
     return true;
 }
