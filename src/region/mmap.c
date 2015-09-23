@@ -251,3 +251,19 @@ static void * mmap_access(struct ilka_mmap *m, ilka_off_t off, size_t len)
         ilka_abort();
     }
 }
+
+static bool mmap_is_edge(struct ilka_mmap *m, ilka_off_t off)
+{
+    struct mmap_node *node = &m->head;
+
+    while (true) {
+        size_t rlen = ilka_atomic_load(&node->len, morder_relaxed);
+        if (off == rlen) return true;
+        if (off <= rlen || !node->next) return false;
+
+        off -= rlen;
+        node = ilka_atomic_load(&node->next, morder_relaxed);
+    }
+
+    ilka_unreachable();
+}

@@ -52,10 +52,7 @@ void ilka_vfail(const char *file, int line, const char *fmt, ...)
     ilka_err = (struct ilka_error) { .errno_ = 0, .file = file, .line = line };
     (void) vsnprintf(ilka_err.msg, ILKA_ERR_MSG_CAP, fmt, args);
 
-    if (abort_on_fail) {
-        ilka_perror(&ilka_err);
-        ilka_abort();
-    }
+    if (abort_on_fail) ilka_abort();
 }
 
 void ilka_vfail_errno(const char *file, int line, const char *fmt, ...)
@@ -66,8 +63,5 @@ void ilka_vfail_errno(const char *file, int line, const char *fmt, ...)
     ilka_err = (struct ilka_error) { .errno_ = errno, .file = file, .line = line };
     (void) vsnprintf(ilka_err.msg, ILKA_ERR_MSG_CAP, fmt, args);
 
-    if (abort_on_fail) {
-        ilka_perror(&ilka_err);
-        ilka_abort();
-    }
+    if (abort_on_fail) ilka_abort();
 }

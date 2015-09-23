@@ -3,6 +3,10 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
+#include "region.h"
+#include "utils/log.h"
+
+static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
 
 #include "file.c"
 #include "mmap.c"
@@ -11,7 +15,6 @@
 #include "persist.c"
 #include "epoch.c"
 
-#include "region.h"
 #include "utils/arch.h"
 #include "utils/lock.h"
 #include "utils/atomic.h"
@@ -157,6 +160,11 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     slock_unlock(&r->lock);
 
     return old_len;
+}
+
+static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off)
+{
+    return mmap_is_edge(&r->mmap, off);
 }
 
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)

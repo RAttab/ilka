@@ -8,6 +8,7 @@
 #include "utils/arch.h"
 #include "utils/lock.h"
 #include "utils/atomic.h"
+#include "utils/log.h"
 
 #include <stdlib.h>
 
@@ -68,7 +69,7 @@ static ilka_off_t _alloc_page_new(
                 ilka_write(r, node_off, sizeof(struct alloc_page_node));
 
             wnode->len -= len;
-            return wnode->off + len;
+            return wnode->off + wnode->len;
         }
 
         ilka_unreachable();
@@ -91,15 +92,22 @@ static void _alloc_page_free(
         const struct alloc_page_node *node =
             ilka_read(r, node_off, sizeof(struct alloc_page_node));
 
-        if (off + len == node->off) {
+        if (off + len == node->off && !ilka_is_edge(r, node->off)) {
             struct alloc_page_node *wnode =
-                ilka_write(r, node_off, sizeof(struct alloc_page_node));
-            wnode->off = off;
-            wnode->len += len;
+                ilka_write(r, off, sizeof(struct alloc_page_node));
+            *wnode = (struct alloc_page_node) {
+                .next = node->next,
+                .off = off,
+                .len = node->len + len,
+            };
+
+            ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
+            *wprev = off;
+
             return;
         }
 
-        if (node->off + node->len == off ) {
+        if (node->off + node->len == off && !ilka_is_edge(r, off)) {
             struct alloc_page_node *wnode =
                 ilka_write(r, node_off, sizeof(struct alloc_page_node));
             wnode->len += len;
@@ -108,7 +116,7 @@ static void _alloc_page_free(
                 const struct alloc_page_node *next =
                     ilka_read(r, wnode->next, sizeof(struct alloc_page_node));
 
-                if (wnode->off + wnode->len == next->off) {
+                if (wnode->off + wnode->len == next->off && !ilka_is_edge(r, next->off)) {
                     wnode->len += next->len;
                     wnode->next = next->next;
                 }
@@ -117,24 +125,22 @@ static void _alloc_page_free(
             return;
         }
 
-        if (off < node->off) {
+        if (off > node->off) {
             prev_off = node_off;
             node_off = node->next;
             continue;
         }
 
-        if (node->off < off) {
-            struct alloc_page_node *wnode =
-                ilka_write(r, node_off, sizeof(struct alloc_page_node));
-            *wnode = (struct alloc_page_node) {node->next, off, len};
-
-            ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
-            *wprev = off;
-            return;
-        }
-
-        ilka_assert(false, "unreachable");
+        break;
     }
+
+    ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
+
+    struct alloc_page_node *node =
+        ilka_write(r, off, sizeof(struct alloc_page_node));
+    *node = (struct alloc_page_node) {*wprev, off, len};
+
+    *wprev = off;
 }
 
 
