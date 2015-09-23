@@ -6,6 +6,21 @@
 #include "thread.h"
 #include "atomic.h"
 
+#include <unistd.h>
+
+// -----------------------------------------------------------------------------
+// cpus
+// -----------------------------------------------------------------------------
+
+size_t ilka_cpus()
+{
+    long count = sysconf(_SC_NPROCESSORS_ONLN);
+    if (count != -1) return count;
+
+    ilka_fail_errno("unable to call sysconf to get cpu count");
+    ilka_abort();
+}
+
 
 // -----------------------------------------------------------------------------
 // tid

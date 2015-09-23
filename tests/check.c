@@ -8,6 +8,7 @@
 #include "check.h"
 #include "utils/error.h"
 #include "utils/time.h"
+#include "utils/thread.h"
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -161,15 +162,6 @@ void ilka_teardown()
 // runners
 // -----------------------------------------------------------------------------
 
-size_t count_cpu()
-{
-    long count = sysconf(_SC_NPROCESSORS_ONLN);
-    if (count != -1) return count;
-
-    ilka_fail_errno("unable to call sysconf to get cpu count");
-    ilka_abort();
-}
-
 struct ilka_tdata
 {
     size_t id;
@@ -190,7 +182,7 @@ void *tdata_shim(void *args)
 
 void ilka_run_threads(void (*fn) (size_t, void *), void *data)
 {
-    size_t n = count_cpu();
+    size_t n = ilka_cpus();
     struct ilka_tdata *tdata = alloca(n * sizeof(struct ilka_tdata));
 
     for (size_t i = 0; i < n; ++i) {

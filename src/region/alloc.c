@@ -182,13 +182,14 @@ static size_t _alloc_bucket(size_t *len)
 static ilka_off_t _alloc_bucket_fill(
         struct ilka_alloc *a, struct alloc_region *ar, size_t len, size_t bucket)
 {
-    const size_t nodes = ILKA_PAGE_SIZE / len;
+    const size_t page_size = ILKA_PAGE_SIZE;
+    const size_t nodes = page_size / len;
     ilka_assert(nodes >= 2, "inssuficient nodes in bucket: %lu < 2", nodes);
 
     ilka_off_t page;
     {
         slock_lock(&a->lock);
-        page = _alloc_page_new(a->region, a->start, ILKA_PAGE_SIZE);
+        page = _alloc_page_new(a->region, a->start, page_size);
         slock_unlock(&a->lock);
     }
 
