@@ -33,13 +33,13 @@ double ilka_elapsed(struct timespec *start)
 
 size_t ilka_print_elapsed(char *buf, size_t n, double t)
 {
-    static const char tiny[] = "smun";
+    static const char scale[] = "smun";
 
     size_t i = 0;
-    for (i = 0; i < sizeof(tiny); ++i) {
+    for (i = 0; i < sizeof(scale); ++i) {
         if (t >= 1.0) break;
         t *= 1000.0;
     }
 
-    return snprintf(buf, n, "%5.3f%c", t, tiny[i]);
+    return snprintf(buf, n, "%7.3f%c", t, scale[i]);
 }

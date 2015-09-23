@@ -181,7 +181,7 @@ END_TEST
 
 START_TEST(page_mixed_free_bench_st)
 {
-    enum { n = 10, size = ILKA_PAGE_SIZE };
+    enum { n = 1000, size = ILKA_PAGE_SIZE };
 
     ilka_off_t pages[n];
     struct ilka_options options = { .open = true, .create = true };
@@ -305,10 +305,10 @@ void make_suite(Suite *s)
     ilka_tc(s, page_linear_free_bench_st, true);
     ilka_tc(s, page_mixed_free_bench_st, true);
 
-    ilka_tc(s, block_test_st, false);
-    ilka_tc(s, block_test_mt, false);
-    ilka_tc(s, block_alloc_bench_st, false);
-    ilka_tc(s, block_free_bench_st, false);
+    ilka_tc(s, block_test_st, true);
+    ilka_tc(s, block_test_mt, true);
+    ilka_tc(s, block_alloc_bench_st, true);
+    ilka_tc(s, block_free_bench_st, true);
 }
 
 int main(void)

@@ -61,7 +61,7 @@ void ilka_print_bench(const char *title, size_t n, double elapsed)
 {
     char buf[1024];
 
-    size_t i = snprintf(buf, sizeof(buf), "bench: %s\t%lu\t", title, n);
+    size_t i = snprintf(buf, sizeof(buf), "bench: %30s %10lu ", title, n);
     i += ilka_print_elapsed(buf + i, sizeof(buf) - i, elapsed / n);
     snprintf(buf + i, sizeof(buf) - 1, "\n");
 
