@@ -94,6 +94,69 @@ void run_alloc_test(size_t id, void *data)
     free(nodes);
 }
 
+struct alloc_bench
+{
+    struct ilka_region *r;
+    const char *title;
+    size_t n;
+    size_t len;
+};
+
+void run_alloc_bench(size_t id, void *data)
+{
+    struct alloc_bench *t = (struct alloc_bench *) data;
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < t->n; ++i)
+            ilka_alloc(t->r, t->len);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+}
+
+void run_linear_free_bench(size_t id, void *data)
+{
+    struct alloc_bench *t = (struct alloc_bench *) data;
+
+    ilka_off_t *pages = alloca(t->n * sizeof(ilka_off_t));
+
+    for (size_t i = 0; i < t->n; ++i)
+        pages[i] = ilka_alloc(t->r, t->len);
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < t->n; ++i)
+            ilka_free(t->r, pages[i], t->len);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+}
+
+
+void run_mixed_free_bench(size_t id, void *data)
+{
+    struct alloc_bench *t = (struct alloc_bench *) data;
+
+    ilka_off_t *pages = alloca(t->n * sizeof(ilka_off_t));
+
+    for (size_t i = 0; i < t->n; ++i)
+        pages[i] = ilka_alloc(t->r, t->len);
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < t->n; i += 2)
+            ilka_free(t->r, pages[i], t->len);
+
+        for (size_t i = 1; i < t->n; i += 2)
+            ilka_free(t->r, pages[i], t->len);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+}
 
 // -----------------------------------------------------------------------------
 // tests
@@ -135,75 +198,106 @@ END_TEST
 
 START_TEST(page_alloc_bench_st)
 {
-    enum { n = 10000, size = ILKA_PAGE_SIZE };
-
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < n; ++i)
-            ilka_alloc(r, size);
-    }
-    double elapsed = ilka_elapsed(&t0);
+    struct alloc_bench tdata = {
+        .title = "page_alloc_bench_st",
+        .r = r,
+        .n = 10000,
+        .len = ILKA_PAGE_SIZE,
+    };
+    run_alloc_bench(0, &tdata);
 
     ilka_close(r);
-
-    ilka_print_bench("page_alloc_bench_st", n, elapsed);
 }
 END_TEST
 
+
+START_TEST(page_alloc_bench_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct alloc_bench tdata = {
+        .title = "page_alloc_bench_mt",
+        .r = r,
+        .n = 10000,
+        .len = ILKA_PAGE_SIZE,
+    };
+    ilka_run_threads(run_alloc_bench, &tdata);
+
+    ilka_close(r);
+}
+END_TEST
 
 START_TEST(page_linear_free_bench_st)
 {
-    enum { n = 10000, size = ILKA_PAGE_SIZE };
-
-    ilka_off_t pages[n];
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    for (size_t i = 0; i < n; ++i)
-        pages[i] = ilka_alloc(r, size);
-
-
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < n; ++i)
-            ilka_free(r, pages[i], size);
-    }
-    double elapsed = ilka_elapsed(&t0);
+    struct alloc_bench tdata = {
+        .title = "page_linear_free_bench_st",
+        .r = r,
+        .n = 10000,
+        .len = ILKA_PAGE_SIZE,
+    };
+    run_linear_free_bench(0, &tdata);
 
     ilka_close(r);
-
-    ilka_print_bench("page_linear_free_bench_st", n, elapsed);
 }
 END_TEST
 
-START_TEST(page_mixed_free_bench_st)
+START_TEST(page_linear_free_bench_mt)
 {
-    enum { n = 1000, size = ILKA_PAGE_SIZE };
-
-    ilka_off_t pages[n];
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    for (size_t i = 0; i < n; ++i)
-        pages[i] = ilka_alloc(r, size);
-
-
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < n; i += 2)
-            ilka_free(r, pages[i], size);
-
-        for (size_t i = 1; i < n; i += 2)
-            ilka_free(r, pages[i], size);
-    }
-    double elapsed = ilka_elapsed(&t0);
+    struct alloc_bench tdata = {
+        .title = "page_linear_free_bench_mt",
+        .r = r,
+        .n = 1000,
+        .len = ILKA_PAGE_SIZE,
+    };
+    ilka_run_threads(run_linear_free_bench, &tdata);
 
     ilka_close(r);
+}
+END_TEST
 
-    ilka_print_bench("page_mixed_free_bench_st", n, elapsed);
+
+START_TEST(page_mixed_free_bench_st)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct alloc_bench tdata = {
+        .title = "page_mixed_free_bench_st",
+        .r = r,
+        .n = 1000,
+        .len = ILKA_PAGE_SIZE,
+    };
+    run_mixed_free_bench(0, &tdata);
+
+    ilka_close(r);
+}
+END_TEST
+
+
+START_TEST(page_mixed_free_bench_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct alloc_bench tdata = {
+        .title = "page_mixed_free_bench_mt",
+        .r = r,
+        .n = 1000,
+        .len = ILKA_PAGE_SIZE,
+    };
+    ilka_run_threads(run_mixed_free_bench, &tdata);
+
+    ilka_close(r);
 }
 END_TEST
 
@@ -243,50 +337,108 @@ START_TEST(block_test_mt)
 }
 END_TEST
 
-
 START_TEST(block_alloc_bench_st)
 {
-    enum { n = 10000, size = sizeof(uint64_t) };
-
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < n; ++i)
-            ilka_alloc(r, size);
-    }
-    double elapsed = ilka_elapsed(&t0);
+    struct alloc_bench tdata = {
+        .title = "block_alloc_bench_st",
+        .r = r,
+        .n = 10000,
+        .len = sizeof(uint64_t),
+    };
+    run_alloc_bench(0, &tdata);
 
     ilka_close(r);
-
-    ilka_print_bench("block_alloc_bench_st", n, elapsed);
 }
 END_TEST
 
 
-START_TEST(block_free_bench_st)
+START_TEST(block_alloc_bench_mt)
 {
-    enum { n = 10000, size = sizeof(uint64_t) };
-
-    ilka_off_t pages[n];
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    for (size_t i = 0; i < n; ++i)
-        pages[i] = ilka_alloc(r, size);
-
-
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < n; ++i)
-            ilka_free(r, pages[i], size);
-    }
-    double elapsed = ilka_elapsed(&t0);
+    struct alloc_bench tdata = {
+        .title = "block_alloc_bench_mt",
+        .r = r,
+        .n = 10000,
+        .len = sizeof(uint64_t),
+    };
+    ilka_run_threads(run_alloc_bench, &tdata);
 
     ilka_close(r);
+}
+END_TEST
 
-    ilka_print_bench("block_free_bench_st", n, elapsed);
+START_TEST(block_linear_free_bench_st)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct alloc_bench tdata = {
+        .title = "block_linear_free_bench_st",
+        .r = r,
+        .n = 10000,
+        .len = sizeof(uint64_t),
+    };
+    run_linear_free_bench(0, &tdata);
+
+    ilka_close(r);
+}
+END_TEST
+
+START_TEST(block_linear_free_bench_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct alloc_bench tdata = {
+        .title = "block_linear_free_bench_mt",
+        .r = r,
+        .n = 1000,
+        .len = sizeof(uint64_t),
+    };
+    ilka_run_threads(run_linear_free_bench, &tdata);
+
+    ilka_close(r);
+}
+END_TEST
+
+
+START_TEST(block_mixed_free_bench_st)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct alloc_bench tdata = {
+        .title = "block_mixed_free_bench_st",
+        .r = r,
+        .n = 10000,
+        .len = sizeof(uint64_t),
+    };
+    run_mixed_free_bench(0, &tdata);
+
+    ilka_close(r);
+}
+END_TEST
+
+
+START_TEST(block_mixed_free_bench_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct alloc_bench tdata = {
+        .title = "block_mixed_free_bench_mt",
+        .r = r,
+        .n = 1000,
+        .len = sizeof(uint64_t),
+    };
+    ilka_run_threads(run_mixed_free_bench, &tdata);
+
+    ilka_close(r);
 }
 END_TEST
 
@@ -302,13 +454,20 @@ void make_suite(Suite *s)
     ilka_tc(s, page_test_st, true);
     ilka_tc(s, page_test_mt, true);
     ilka_tc(s, page_alloc_bench_st, true);
+    ilka_tc(s, page_alloc_bench_mt, true);
     ilka_tc(s, page_linear_free_bench_st, true);
+    ilka_tc(s, page_linear_free_bench_mt, true);
     ilka_tc(s, page_mixed_free_bench_st, true);
+    ilka_tc(s, page_mixed_free_bench_mt, true);
 
     ilka_tc(s, block_test_st, true);
     ilka_tc(s, block_test_mt, true);
     ilka_tc(s, block_alloc_bench_st, true);
-    ilka_tc(s, block_free_bench_st, true);
+    ilka_tc(s, block_alloc_bench_mt, true);
+    ilka_tc(s, block_linear_free_bench_st, true);
+    ilka_tc(s, block_linear_free_bench_mt, true);
+    ilka_tc(s, block_mixed_free_bench_st, true);
+    ilka_tc(s, block_mixed_free_bench_mt, true);
 }
 
 int main(void)
