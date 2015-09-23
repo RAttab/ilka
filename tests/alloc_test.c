@@ -10,6 +10,7 @@
 #include "utils/arch.h"
 #include "utils/bits.h"
 #include "utils/rand.h"
+#include "utils/time.h"
 #include "utils/error.h"
 #include "utils/thread.h"
 #include "region/region.h"
@@ -132,6 +133,51 @@ START_TEST(page_test_mt)
 }
 END_TEST
 
+START_TEST(page_alloc_bench_st)
+{
+    enum { n = 10000, size = ILKA_PAGE_SIZE };
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < n; ++i)
+            ilka_alloc(r, size);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    ilka_close(r);
+
+    ilka_print_bench("page_alloc_bench_st", n, elapsed);
+}
+END_TEST
+
+
+START_TEST(page_free_bench_st)
+{
+    enum { n = 10000, size = ILKA_PAGE_SIZE };
+
+    ilka_off_t pages[n];
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    for (size_t i = 0; i < n; ++i)
+        pages[i] = ilka_alloc(r, size);
+
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < n; ++i)
+            ilka_free(r, pages[i], size);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    ilka_close(r);
+
+    ilka_print_bench("page_free_bench_st", n, elapsed);
+}
+END_TEST
 
 START_TEST(block_test_st)
 {
@@ -169,6 +215,53 @@ START_TEST(block_test_mt)
 END_TEST
 
 
+START_TEST(block_alloc_bench_st)
+{
+    enum { n = 10000, size = sizeof(uint64_t) };
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < n; ++i)
+            ilka_alloc(r, size);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    ilka_close(r);
+
+    ilka_print_bench("block_alloc_bench_st", n, elapsed);
+}
+END_TEST
+
+
+START_TEST(block_free_bench_st)
+{
+    enum { n = 10000, size = sizeof(uint64_t) };
+
+    ilka_off_t pages[n];
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    for (size_t i = 0; i < n; ++i)
+        pages[i] = ilka_alloc(r, size);
+
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < n; ++i)
+            ilka_free(r, pages[i], size);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    ilka_close(r);
+
+    ilka_print_bench("block_free_bench_st", n, elapsed);
+}
+END_TEST
+
+
 // -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
@@ -177,10 +270,15 @@ void make_suite(Suite *s)
 {
     ilka_dbg_abort_on_fail();
 
-    ilka_tc(s, page_test_st, true);
-    ilka_tc(s, page_test_mt, true);
-    ilka_tc(s, block_test_st, true);
-    ilka_tc(s, block_test_mt, true);
+    ilka_tc(s, page_test_st, false);
+    ilka_tc(s, page_test_mt, false);
+    ilka_tc(s, page_alloc_bench_st, true);
+    ilka_tc(s, page_free_bench_st, true);
+
+    ilka_tc(s, block_test_st, false);
+    ilka_tc(s, block_test_mt, false);
+    ilka_tc(s, block_alloc_bench_st, true);
+    ilka_tc(s, block_free_bench_st, true);
 }
 
 int main(void)

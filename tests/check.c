@@ -7,6 +7,7 @@
 
 #include "check.h"
 #include "utils/error.h"
+#include "utils/time.h"
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -54,6 +55,17 @@ void ilka_print_title(const char *title)
     buf[80] = '\0';
 
     printf("\n%s\n", buf);
+}
+
+void ilka_print_bench(const char *title, size_t n, double elapsed)
+{
+    char buf[1024];
+
+    size_t i = snprintf(buf, sizeof(buf), "bench: %s\t%lu\t", title, n);
+    i += ilka_print_elapsed(buf + i, sizeof(buf) - i, elapsed / n);
+    snprintf(buf + i, sizeof(buf) - 1, "\n");
+
+    printf("%s", buf);
 }
 
 
