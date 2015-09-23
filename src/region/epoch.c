@@ -139,7 +139,7 @@ static void epoch_world_stop(struct ilka_epoch *e)
     do {
         new.packed = old.packed;
         new.unpacked.lock++;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_relaxed));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
 
     while (old.unpacked.epochs[0] || old.unpacked.epochs[1])
         old.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
@@ -155,5 +155,5 @@ static void epoch_world_resume(struct ilka_epoch *e)
     do {
         new.packed = old.packed;
         new.unpacked.lock--;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_acquire));
 }
