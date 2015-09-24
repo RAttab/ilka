@@ -213,6 +213,11 @@ void ilka_exit(struct ilka_region *r, ilka_epoch_t epoch)
     epoch_exit(&r->epoch, epoch);
 }
 
+bool ilka_defer(struct ilka_region *r, void (*fn) (void *), void *data)
+{
+    return epoch_defer(&r->epoch, fn, data);
+}
+
 void ilka_world_stop(struct ilka_region *r)
 {
     epoch_world_stop(&r->epoch);

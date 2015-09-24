@@ -23,8 +23,12 @@ union epoch_state
 
 struct epoch_node
 {
+    void *data;
+    void (*fn) (void *);
+
     size_t len;
     ilka_off_t off;
+
     struct epoch_node *next;
 };
 
@@ -58,16 +62,8 @@ static void epoch_close(struct ilka_epoch *e)
     }
 }
 
-static bool epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
+static void _epoch_defer(struct ilka_epoch *e, struct epoch_node *node)
 {
-    struct epoch_node *node = malloc(sizeof(struct epoch_node));
-    if (!node) {
-        ilka_fail("out-of-memory for defer node: %lu", sizeof(struct epoch_node));
-        return false;
-    }
-
-    *node = (struct epoch_node) {off, len, 0};
-
     union epoch_state state;
     state.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
@@ -76,6 +72,32 @@ static bool epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
     do {
         node->next = old;
     } while (!ilka_atomic_cmp_xchg(&e->defers[i], &old, node, morder_relaxed));
+}
+
+static bool epoch_defer(struct ilka_epoch *e, void (*fn) (void *), void *data)
+{
+    struct epoch_node *node = malloc(sizeof(struct epoch_node));
+    if (!node) {
+        ilka_fail("out-of-memory for defer node: %lu", sizeof(struct epoch_node));
+        return false;
+    }
+
+    *node = (struct epoch_node) { .fn = fn, .data = data };
+    _epoch_defer(e, node);
+
+    return true;
+}
+
+static bool epoch_defer_free(struct ilka_epoch *e, ilka_off_t off, size_t len)
+{
+    struct epoch_node *node = malloc(sizeof(struct epoch_node));
+    if (!node) {
+        ilka_fail("out-of-memory for defer node: %lu", sizeof(struct epoch_node));
+        return false;
+    }
+
+    *node = (struct epoch_node) { .off = off, .len = len };
+    _epoch_defer(e, node);
 
     return true;
 }
@@ -121,7 +143,8 @@ static void epoch_exit(struct ilka_epoch *e, ilka_epoch_t epoch)
     } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
 
     while (defers) {
-        ilka_free(e->region, defers->off, defers->len);
+        if (defers->fn) defers->fn(defers->data);
+        else ilka_free(e->region, defers->off, defers->len);
 
         struct epoch_node *next = defers->next;
         free(defers);

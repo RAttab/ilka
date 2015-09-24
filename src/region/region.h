@@ -45,6 +45,7 @@ bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len);
 
 ilka_epoch_t ilka_enter(struct ilka_region *r);
 void ilka_exit(struct ilka_region *r, ilka_epoch_t h);
+bool ilka_defer(struct ilka_region *r, void (*fn) (void *), void *data);
 
 void ilka_world_stop(struct ilka_region *r);
 void ilka_world_resume(struct ilka_region *r);
