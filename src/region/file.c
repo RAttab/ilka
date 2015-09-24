@@ -3,15 +3,6 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "region.h"
-#include "utils/error.h"
-
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-
 // -----------------------------------------------------------------------------
 // file
 // -----------------------------------------------------------------------------

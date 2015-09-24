@@ -7,5 +7,12 @@
 
 #pragma once
 
-#include "key.h"
-#include "trie/trie.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+#include "utils/arch.h"
+#include "utils/compiler.h"
+#include "utils/log.h"
+#include "utils/error.h"
+#include "region/region.h"

@@ -3,8 +3,19 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "region.h"
-#include "utils/log.h"
+#include "ilka.h"
+#include "utils/utils.h"
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 
 static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
 
@@ -14,13 +25,6 @@ static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
 #include "journal.c"
 #include "persist.c"
 #include "epoch.c"
-
-#include "utils/arch.h"
-#include "utils/lock.h"
-#include "utils/atomic.h"
-
-#include <string.h>
-#include <stdlib.h>
 
 
 // -----------------------------------------------------------------------------

@@ -3,16 +3,6 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "region.h"
-#include "utils/bits.h"
-#include "utils/arch.h"
-#include "utils/lock.h"
-#include "utils/atomic.h"
-#include "utils/log.h"
-
-#include <stdlib.h>
-
-
 // -----------------------------------------------------------------------------
 // config
 // -----------------------------------------------------------------------------

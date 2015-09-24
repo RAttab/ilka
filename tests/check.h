@@ -7,9 +7,13 @@
 
 #pragma once
 
+#define ILKA_ABORT_ON_FAIL
+
 #include <check.h>
 #include <stdio.h>
-#include <stdbool.h>
+
+#include "ilka.h"
+#include "utils/utils.h"
 
 typedef void (*ilka_make_suite_t)(Suite *);
 int ilka_tests(const char *name, ilka_make_suite_t make_suite);

@@ -3,15 +3,7 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "error.h"
-
-#include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <errno.h>
-
+#pragma once
 
 // -----------------------------------------------------------------------------
 // error

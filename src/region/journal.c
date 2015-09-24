@@ -3,12 +3,6 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "region.h"
-
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-
 // -----------------------------------------------------------------------------
 // config
 // -----------------------------------------------------------------------------

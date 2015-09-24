@@ -3,14 +3,6 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "region.h"
-#include "utils/compiler.h"
-
-#include <unistd.h>
-#include <sys/wait.h>
-#include <sys/types.h>
-
-
 // -----------------------------------------------------------------------------
 // persist
 // -----------------------------------------------------------------------------

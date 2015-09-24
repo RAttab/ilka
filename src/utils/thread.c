@@ -3,11 +3,6 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "thread.h"
-#include "atomic.h"
-
-#include <unistd.h>
-
 // -----------------------------------------------------------------------------
 // cpus
 // -----------------------------------------------------------------------------

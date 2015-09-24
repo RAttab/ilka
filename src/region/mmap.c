@@ -3,14 +3,6 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "utils/atomic.h"
-
-#include <sys/mman.h>
-#include <errno.h>
-#include <string.h>
-#include <stdlib.h>
-
-
 // -----------------------------------------------------------------------------
 // mmap
 // -----------------------------------------------------------------------------

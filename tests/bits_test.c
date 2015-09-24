@@ -5,7 +5,6 @@
    bit ops test.
 */
 
-#include "utils/bits.h"
 #include "check.h"
 
 inline size_t floor_div(size_t n, size_t d) { return n / d; }

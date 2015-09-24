@@ -3,12 +3,6 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#include "log.h"
-#include "thread.h"
-
-#include <stdio.h>
-#include <stdarg.h>
-
 // -----------------------------------------------------------------------------
 // log
 // -----------------------------------------------------------------------------

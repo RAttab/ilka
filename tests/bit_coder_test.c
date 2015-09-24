@@ -5,16 +5,19 @@
    Bit encoder/decoder test
 */
 
-#include "utils/bit_coder.h"
 #include "check.h"
-
 #include <signal.h>
+
+// -----------------------------------------------------------------------------
+// utils
+// -----------------------------------------------------------------------------
 
 #define check_decode(coder, bits, exp)          \
     do {                                        \
         uint64_t r = bit_decode(coder, bits);   \
         ck_assert_int_eq(r, exp);               \
     } while(0);
+
 
 // -----------------------------------------------------------------------------
 // basics test

@@ -3,20 +3,8 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
-#define ILKA_ABORT_ON_FAIL
-
 #include "check.h"
-#include "utils/log.h"
-#include "utils/arch.h"
-#include "utils/bits.h"
-#include "utils/rand.h"
-#include "utils/time.h"
-#include "utils/error.h"
-#include "utils/thread.h"
-#include "region/region.h"
-
 #include <stdlib.h>
-
 
 // -----------------------------------------------------------------------------
 // utils

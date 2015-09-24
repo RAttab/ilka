@@ -7,8 +7,6 @@
 
 #include "check.h"
 #include "trie/kv.h"
-#include "utils/arch.h"
-#include "utils/bits.h"
 
 
 // -----------------------------------------------------------------------------
