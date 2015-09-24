@@ -529,8 +529,6 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_dbg_abort_on_fail();
-
     ilka_tc(s, page_test_st, true);
     ilka_tc(s, page_test_mt, true);
     ilka_tc(s, page_cold_alloc_bench_st, true);

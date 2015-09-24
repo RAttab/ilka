@@ -34,6 +34,8 @@ static void config_runner(SRunner *runner)
 
 int ilka_tests(const char *name, ilka_make_suite_t make_suite)
 {
+    ilka_dbg_abort_on_fail();
+
     Suite *suite = suite_create(name);
     make_suite(suite);
 

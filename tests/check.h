@@ -7,8 +7,6 @@
 
 #pragma once
 
-#define ILKA_ABORT_ON_FAIL
-
 #include <check.h>
 #include <stdio.h>
 
