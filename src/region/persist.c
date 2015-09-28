@@ -76,7 +76,7 @@ static bool _persist_wait(pid_t pid)
     } while (!WIFEXITED(status) && !WIFSIGNALED(status));
 
     if (WIFEXITED(status)) {
-        if (!WEXITSTATUS(status)) return false;
+        if (!WEXITSTATUS(status)) return true;
 
         ilka_fail("persist process returned error: %d", WEXITSTATUS(status));
         return false;

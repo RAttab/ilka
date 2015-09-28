@@ -71,7 +71,9 @@ static void _epoch_defer(struct ilka_epoch *e, struct epoch_node *node)
     struct epoch_node *old = e->defers[i];
     do {
         node->next = old;
-    } while (!ilka_atomic_cmp_xchg(&e->defers[i], &old, node, morder_relaxed));
+
+        // morder_release: commits all writes to node before publishing it.
+    } while (!ilka_atomic_cmp_xchg(&e->defers[i], &old, node, morder_release));
 }
 
 static bool epoch_defer(struct ilka_epoch *e, void (*fn) (void *), void *data)
@@ -115,12 +117,13 @@ static ilka_epoch_t epoch_enter(struct ilka_epoch *e)
 
         new.packed = old.packed;
 
-        ilka_epoch_t epoch = new.unpacked.epoch;
+        epoch = new.unpacked.epoch;
         if (!new.unpacked.epochs[(epoch & 0x1) ^ 0x1])
             epoch = ++new.unpacked.epoch;
 
         new.unpacked.epochs[epoch & 0x1]++;
 
+        // morder_acquire: reads should not be hoisted out of the epoch-defined region.
     } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_acquire));
 
     return epoch;
@@ -140,6 +143,7 @@ static void epoch_exit(struct ilka_epoch *e, ilka_epoch_t epoch)
         if (!defers && !count && epoch != new.unpacked.epoch)
             defers = ilka_atomic_xchg(&e->defers[epoch & 0x1], NULL, morder_relaxed);
 
+        // morder_acquire: reads should not be sunk out of the epoch-defined region.
     } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
 
     while (defers) {
@@ -160,11 +164,12 @@ static void epoch_world_stop(struct ilka_epoch *e)
     do {
         new.packed = old.packed;
         new.unpacked.lock++;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_relaxed));
 
     while (old.unpacked.epochs[0] || old.unpacked.epochs[1])
         old.packed = ilka_atomic_load(&e->state.packed, morder_relaxed);
 
+    // morder_acquire: we're acquiring a lock so make sure nothing is hoisted.
     ilka_atomic_fence(morder_acquire);
 }
 
@@ -176,5 +181,7 @@ static void epoch_world_resume(struct ilka_epoch *e)
     do {
         new.packed = old.packed;
         new.unpacked.lock--;
-    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_acquire));
+
+        // morder_release: we're releasing a lock so make sure nothing is sunk.
+    } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
 }

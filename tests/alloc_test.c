@@ -190,7 +190,7 @@ START_TEST(page_test_st)
     };
     run_alloc_test(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -207,7 +207,7 @@ START_TEST(page_test_mt)
     };
     ilka_run_threads(run_alloc_test, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -224,7 +224,7 @@ START_TEST(page_cold_alloc_bench_st)
     };
     run_cold_alloc_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -241,7 +241,7 @@ START_TEST(page_cold_alloc_bench_mt)
     };
     ilka_run_threads(run_cold_alloc_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -258,7 +258,7 @@ START_TEST(page_warm_alloc_bench_st)
     };
     run_warm_alloc_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -275,7 +275,7 @@ START_TEST(page_warm_alloc_bench_mt)
     };
     ilka_run_threads(run_warm_alloc_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -292,7 +292,7 @@ START_TEST(page_linear_free_bench_st)
     };
     run_linear_free_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -309,7 +309,7 @@ START_TEST(page_linear_free_bench_mt)
     };
     ilka_run_threads(run_linear_free_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -326,7 +326,7 @@ START_TEST(page_mixed_free_bench_st)
     };
     run_mixed_free_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -343,7 +343,7 @@ START_TEST(page_mixed_free_bench_mt)
     };
     ilka_run_threads(run_mixed_free_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -365,7 +365,7 @@ START_TEST(block_test_st)
     };
     run_alloc_test(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -382,7 +382,7 @@ START_TEST(block_test_mt)
     };
     ilka_run_threads(run_alloc_test, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -399,7 +399,7 @@ START_TEST(block_cold_alloc_bench_st)
     };
     run_cold_alloc_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -416,7 +416,7 @@ START_TEST(block_cold_alloc_bench_mt)
     };
     ilka_run_threads(run_cold_alloc_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -433,7 +433,7 @@ START_TEST(block_warm_alloc_bench_st)
     };
     run_warm_alloc_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -450,7 +450,7 @@ START_TEST(block_warm_alloc_bench_mt)
     };
     ilka_run_threads(run_warm_alloc_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -467,7 +467,7 @@ START_TEST(block_linear_free_bench_st)
     };
     run_linear_free_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -484,7 +484,7 @@ START_TEST(block_linear_free_bench_mt)
     };
     ilka_run_threads(run_linear_free_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -501,7 +501,7 @@ START_TEST(block_mixed_free_bench_st)
     };
     run_mixed_free_bench(0, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -518,7 +518,7 @@ START_TEST(block_mixed_free_bench_mt)
     };
     ilka_run_threads(run_mixed_free_bench, &tdata);
 
-    ilka_close(r);
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
