@@ -11,8 +11,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "utils/arch.h"
-#include "utils/compiler.h"
-#include "utils/log.h"
-#include "utils/error.h"
+#include "arch.h"
+#include "compiler.h"
+#include "log.h"
+#include "error.h"
 #include "region/region.h"

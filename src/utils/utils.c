@@ -6,18 +6,13 @@
 */
 
 #include <time.h>
-#include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include "ilka.h"
 #include "utils/utils.h"
 
-#include "error.c"
 #include "rand.c"
 #include "thread.c"
-#include "log.c"
 #include "time.c"
