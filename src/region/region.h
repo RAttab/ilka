@@ -16,6 +16,7 @@ struct ilka_options
     bool open;
     bool create;
     bool read_only;
+
     bool huge_tlb;
     bool populate;
     size_t vma_reserved;
@@ -33,6 +34,9 @@ typedef uint16_t ilka_epoch_t;
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
 bool ilka_close(struct ilka_region *r);
 ilka_off_t ilka_grow(struct ilka_region *r, size_t len);
+
+ilka_off_t ilka_get_root(struct ilka_region *r);
+void ilka_set_root(struct ilka_region *r, ilka_off_t root);
 
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len);
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len);

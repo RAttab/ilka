@@ -47,6 +47,7 @@ struct meta
     uint64_t magic;
     uint64_t version;
     ilka_off_t alloc;
+    ilka_off_t root;
 };
 
 struct ilka_region
@@ -164,6 +165,18 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     slock_unlock(&r->lock);
 
     return old_len;
+}
+
+ilka_off_t ilka_get_root(struct ilka_region *r)
+{
+    const struct meta *m = ilka_read(r, 0, sizeof(struct meta));
+    return m->root;
+}
+
+void ilka_set_root(struct ilka_region *r, ilka_off_t root)
+{
+    struct meta *m = ilka_write(r, 0, sizeof(struct meta));
+    m->root = root;
 }
 
 static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off)
