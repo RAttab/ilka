@@ -6,11 +6,12 @@
 #include "check.h"
 #include <stdlib.h>
 
+
 // -----------------------------------------------------------------------------
-// epoch tests
+// utils
 // -----------------------------------------------------------------------------
 
-struct defer_test
+struct epoch_test
 {
     struct ilka_region *r;
 
@@ -29,11 +30,14 @@ void defer_fn(void *d)
     free(data);
 }
 
+
+// -----------------------------------------------------------------------------
+// defer tests
+// -----------------------------------------------------------------------------
+
 void run_defer_test(size_t id, void *data)
 {
-    enum { n = 10, it = 1000 };
-
-    struct defer_test *t = data;
+    struct epoch_test *t = data;
 
     if ((id % 2) == 0) {
         for (size_t i = 0; i < t->runs; ++i) {
@@ -84,13 +88,106 @@ START_TEST(epoch_defer_mt)
     blocks[0] = malloc(sizeof(size_t));
     *blocks[0] = -1UL;
 
-    struct defer_test data = {
+    struct epoch_test data = {
         .r = r,
         .n = n,
         .blocks = blocks,
-        .runs = 100,
+        .runs = 1000000,
     };
     ilka_run_threads(run_defer_test, &data);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// world test
+// -----------------------------------------------------------------------------
+
+void run_world_test(size_t id, void *data)
+{
+    struct epoch_test *t = data;
+    if (!ilka_srand(id + 1)) ilka_abort();
+
+    if ((id % 2) == 0) {
+        bool done;
+        size_t *exp = alloca(t->n * sizeof(size_t));
+
+        do {
+            if (!ilka_nsleep(ilka_rand_range(10, 1000))) ilka_abort();
+
+            ilka_world_stop(t->r);
+
+            done = true;
+            for (size_t i = 0; i < t->n; ++i) {
+                size_t *val = ilka_atomic_load(&t->blocks[i], morder_relaxed);
+                exp[i] = val ? *val : 0;
+                done &= !val;
+            }
+
+            for (size_t i = 0; i < t->n; ++i) {
+                size_t *val = ilka_atomic_load(&t->blocks[i], morder_relaxed);
+                if (!exp[i]) ilka_assert(!val, "expected nil value");
+                else ilka_assert(*val == exp[i], "unexpected value: %lu != %lu", *val, exp[i]);
+            }
+
+            ilka_world_resume(t->r);
+        } while (!done);
+    }
+
+    else {
+        for (size_t i = 0; i < t->runs; ++i) {
+            ilka_epoch_t epoch = ilka_enter(t->r);
+
+            size_t i = ilka_rand_range(0, t->n);
+            size_t *new = malloc(sizeof(size_t));
+            *new = id;
+
+
+            size_t *old = ilka_atomic_xchg(&t->blocks[i], new, morder_release);
+            if (old) {
+                ilka_assert(*old, "unexpected zero value");
+                ilka_defer(t->r, defer_fn, old);
+            }
+
+            ilka_exit(t->r, epoch);
+        }
+
+        for (size_t i = 0; i < t->n;  ++i) {
+            ilka_epoch_t epoch = ilka_enter(t->r);
+
+            size_t *old = ilka_atomic_xchg(&t->blocks[i], NULL, morder_release);
+
+            if (!old) {
+                ilka_assert(*old, "unexpected zero value");
+                ilka_defer(t->r, defer_fn, old);
+            }
+
+            ilka_exit(t->r, epoch);
+        }
+    }
+}
+
+
+START_TEST(epoch_world_mt)
+{
+    enum { n = 10 };
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    size_t *blocks[n] = { 0 };
+    blocks[0] = malloc(sizeof(size_t));
+    *blocks[0] = -1UL;
+
+    struct epoch_test data = {
+        .r = r,
+        .n = n,
+        .blocks = blocks,
+        .runs = 1000000,
+    };
+    ilka_run_threads(run_world_test, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -104,6 +201,7 @@ END_TEST
 void make_suite(Suite *s)
 {
     ilka_tc(s, epoch_defer_mt, true);
+    ilka_tc(s, epoch_world_mt, false);
 }
 
 int main(void)

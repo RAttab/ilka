@@ -52,7 +52,7 @@ struct alloc_test
 
 void run_alloc_test(size_t id, void *data)
 {
-    struct alloc_test *t = (struct alloc_test *) data;
+    struct alloc_test *t = data;
 
     ilka_srand(id + 1);
     struct alloc_node *nodes = calloc(t->blocks, sizeof(struct alloc_node));
@@ -93,7 +93,7 @@ struct alloc_bench
 
 void run_cold_alloc_bench(size_t id, void *data)
 {
-    struct alloc_bench *t = (struct alloc_bench *) data;
+    struct alloc_bench *t = data;
 
     struct timespec t0 = ilka_now();
     {
@@ -107,7 +107,7 @@ void run_cold_alloc_bench(size_t id, void *data)
 
 void run_warm_alloc_bench(size_t id, void *data)
 {
-    struct alloc_bench *t = (struct alloc_bench *) data;
+    struct alloc_bench *t = data;
 
     // warm-up
     {
@@ -132,7 +132,7 @@ void run_warm_alloc_bench(size_t id, void *data)
 
 void run_linear_free_bench(size_t id, void *data)
 {
-    struct alloc_bench *t = (struct alloc_bench *) data;
+    struct alloc_bench *t = data;
 
     ilka_off_t *pages = alloca(t->n * sizeof(ilka_off_t));
 
@@ -152,7 +152,7 @@ void run_linear_free_bench(size_t id, void *data)
 
 void run_mixed_free_bench(size_t id, void *data)
 {
-    struct alloc_bench *t = (struct alloc_bench *) data;
+    struct alloc_bench *t = data;
 
     ilka_off_t *pages = alloca(t->n * sizeof(ilka_off_t));
 
