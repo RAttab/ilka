@@ -12,3 +12,10 @@
 struct timespec ilka_now();
 double ilka_elapsed(struct timespec *start);
 size_t ilka_print_elapsed(char *buf, size_t n, double t);
+
+
+// -----------------------------------------------------------------------------
+// sleep
+// -----------------------------------------------------------------------------
+
+bool ilka_nsleep(uint64_t nanos);

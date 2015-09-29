@@ -40,3 +40,28 @@ size_t ilka_print_elapsed(char *buf, size_t n, double t)
 
     return snprintf(buf, n, "%7.3f%c", t, scale[i]);
 }
+
+
+// -----------------------------------------------------------------------------
+// sleep
+// -----------------------------------------------------------------------------
+
+bool ilka_nsleep(uint64_t nanos)
+{
+    struct timespec t = ilka_now();
+
+    t.tv_nsec += nanos;
+    if (t.tv_nsec >= 1000000000) {
+        t.tv_sec += t.tv_nsec / 1000000000;
+        t.tv_nsec = t.tv_nsec % 1000000000;
+    }
+
+    while (true) {
+        int ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+        if (!ret) return true;
+        if (errno == EINTR) continue;
+
+        ilka_fail_errno("unable to sleep via clock_nanosleep");
+        return false;
+    }
+}
