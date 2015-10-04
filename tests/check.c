@@ -173,7 +173,7 @@ struct ilka_tdata
 
 void *tdata_shim(void *args)
 {
-    struct ilka_tdata *tdata = (struct ilka_tdata *) args;
+    struct ilka_tdata *tdata = args;
 
     tdata->fn(tdata->id, tdata->data);
 
@@ -183,6 +183,8 @@ void *tdata_shim(void *args)
 void ilka_run_threads(void (*fn) (size_t, void *), void *data)
 {
     size_t n = ilka_cpus();
+    ilka_assert(n >= 2, "too few cpus detected: %lu < 2", n);
+
     struct ilka_tdata *tdata = alloca(n * sizeof(struct ilka_tdata));
 
     for (size_t i = 0; i < n; ++i) {
