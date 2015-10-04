@@ -198,7 +198,10 @@ static ilka_off_t _alloc_bucket_fill(
     ilka_off_t head = ar->buckets[bucket];
     do {
         *last = head;
-    } while(!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, start + len, morder_relaxed));
+
+        // morder_release: ensure that the link list is committed before
+        // publishing it.
+    } while(!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, start + len, morder_release));
 
     return page;
 }
