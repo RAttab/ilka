@@ -42,6 +42,8 @@ void run_basics_test(size_t id, void *data)
             ilka_off_t *root = ilka_write(t->r, off, sizeof(ilka_off_t));
             ilka_atomic_store(root, page, morder_relaxed);
 
+            memset(ilka_write(t->r, page, n), 0, n);
+
             ilka_exit(t->r, e);
         }
 
