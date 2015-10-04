@@ -9,6 +9,11 @@
 
 static size_t tick = 0;
 
+void ilka_logt(const char *title) {
+    size_t t = ilka_atomic_fetch_add(&tick, 1, morder_seq_cst);
+    fprintf(stderr, "[%8lu] <%lu> %s\n", t, ilka_tid(), title);
+}
+
 void ilka_log(const char *title, const char *fmt, ...)
 {
     va_list args;
