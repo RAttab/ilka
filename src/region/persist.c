@@ -96,11 +96,12 @@ static bool persist_save(struct ilka_persist *p)
 
     slock_lock(&p->lock);
 
-    ilka_world_stop(p->region);
-
-    pid_t pid = fork();
-
-    ilka_world_resume(p->region);
+    pid_t pid;
+    {
+        ilka_world_stop(p->region);
+        pid = fork();
+        ilka_world_resume(p->region);
+    }
 
     if (pid == -1) {
         ilka_fail_errno("unable to fork for persist");
@@ -117,6 +118,7 @@ static bool persist_save(struct ilka_persist *p)
         }
 
         bool ret = _persist_wait(pid);
+
         slock_unlock(&p->lock);
 
         return ret;
