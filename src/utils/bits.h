@@ -46,3 +46,21 @@ inline size_t bitfield_next(uint64_t bf, size_t bit)
 {
     return ctz(bf & ~((1UL << bit) -1));
 }
+
+// for (size_t i = bitfields_next(bf, 0, n); i < n; i = bitfields_next(bf, i + 1, n))
+inline size_t bitfields_next(const uint64_t *bf, size_t bit, size_t n)
+{
+    for (; bit < n; bit += 64) {
+        size_t low = bit % 64;
+        size_t high = bit / 64;
+
+        if (bf[high]) {
+            size_t i = bitfield_next(bf[high], low);
+            if (i < 64) return i + (high * 64);
+        }
+
+        bit &= ~(64 - 1);
+    }
+
+    return n;
+}
