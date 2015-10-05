@@ -63,12 +63,8 @@ void run_basics_test(size_t id, void *data)
     }
     else {
         for (size_t run = 0; run < t->runs; ++run) {
-            ilka_nsleep(ilka_rand_range(100, 10000));
-
-            ilka_logt("test.save");
             if (!ilka_save(t->r)) ilka_abort();
 
-            ilka_logt("test.open");
             struct ilka_options options = { .open = true, .read_only = true };
             struct ilka_region *r = ilka_open(t->file, &options);
 
@@ -79,8 +75,6 @@ void run_basics_test(size_t id, void *data)
             for (size_t i = 0; i < t->threads; ++i) {
                 if (!roots[i]) continue;
 
-                ilka_log("test.read", "i=%lu", i);
-
                 const uint64_t *page = ilka_read(r, roots[i], n);
                 for (size_t j = 1; j < n / m; ++j) {
                     ilka_assert(page[0] == page[j],
@@ -89,7 +83,6 @@ void run_basics_test(size_t id, void *data)
                 }
             }
 
-            ilka_logt("test.close");
             if (!ilka_close(r)) ilka_abort();
         }
 

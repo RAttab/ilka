@@ -81,7 +81,7 @@ static bool persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
         }
 
         size_t i = high * marks_block_bits + low;
-        marks[i / 64] |= 1UL << (i % 64);
+        ilka_atomic_fetch_or(&marks[i / 64], 1UL << (i % 64), morder_relaxed);
 
         off += len;
     }
