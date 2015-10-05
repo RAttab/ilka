@@ -193,9 +193,7 @@ void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
 
     void *ptr = mmap_access(&r->mmap, off, len);
-    if (!ptr) return ptr;
-
-    if (!persist_mark(&r->persist, off, len)) return NULL;
+    if (ptr) persist_mark(&r->persist, off, len);
     return ptr;
 }
 

@@ -35,6 +35,7 @@ static bool persist_init(
     p->region = r;
     p->file = file;
     slock_init(&p->lock);
+    p->marks = calloc(marks_words, sizeof(uint64_t));
 
     return true;
 }
@@ -44,26 +45,13 @@ static void persist_close(struct ilka_persist *p)
     if (p->marks) free(p->marks);
 }
 
-static bool persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
+static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
 {
-    uint64_t *marks = ilka_atomic_load(&p->marks, morder_relaxed);
-    if (!marks) {
-        uint64_t *new_marks = calloc(marks_words, sizeof(uint64_t));
-        if (!new_marks) {
-            ilka_fail("out-of-memory for marks array: %lu * %lu", marks_words, sizeof(uint64_t));
-            return false;
-        }
-
-        if (ilka_atomic_cmp_xchg(&p->marks, &marks, new_marks, morder_release))
-            marks = new_marks;
-        else free(new_marks);
-    }
-
     ilka_off_t end = off + len;
+    end >>= marks_trunc_bits;
     off >>= marks_trunc_bits;
 
-
-    while ((off << marks_trunc_bits) < end) {
+    do {
         size_t msb = clz(off);
         msb = msb < 64 ? 63 - msb : 0;
 
@@ -81,12 +69,36 @@ static bool persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
         }
 
         size_t i = high * marks_block_bits + low;
-        ilka_atomic_fetch_or(&marks[i / 64], 1UL << (i % 64), morder_relaxed);
+        ilka_atomic_fetch_or(&p->marks[i / 64], 1UL << (i % 64), morder_relaxed);
 
-        off += len;
+        off += (len >> marks_trunc_bits);
+    } while (off < end);
+}
+
+static void _persist_save_journal(struct ilka_persist *p, uint64_t *marks)
+{
+    struct ilka_journal j;
+    if (!journal_init(&j, p->region, p->file)) ilka_abort();
+
+    for (size_t i = bitfields_next(marks, 0, marks_bits);
+         i < marks_bits;
+         i = bitfields_next(marks, i + 1, marks_bits))
+    {
+        size_t len = marks_min_len;
+        size_t off = i % marks_block_bits;
+        size_t high = i / marks_block_bits;
+
+        if (high) {
+            len <<= high - 1;
+            off = (off | marks_low_bits) << high;
+        }
+
+        off <<= marks_trunc_bits;
+
+        if (!journal_add(&j, off, len)) ilka_abort();
     }
 
-    return true;
+    if (!journal_finish(&j)) ilka_abort();
 }
 
 static bool _persist_wait(pid_t pid)
@@ -115,8 +127,7 @@ static bool _persist_wait(pid_t pid)
 
 static bool persist_save(struct ilka_persist *p)
 {
-    uint64_t *old_marks = ilka_atomic_load(&p->marks, morder_relaxed);
-    if (!old_marks) return true;
+    uint64_t *old_marks;
     uint64_t *new_marks = calloc(marks_words, sizeof(uint64_t));
 
     slock_lock(&p->lock);
@@ -126,6 +137,8 @@ static bool persist_save(struct ilka_persist *p)
         ilka_world_stop(p->region);
 
         pid = fork();
+
+        old_marks = p->marks;
         p->marks = new_marks;
 
         ilka_world_resume(p->region);
@@ -138,41 +151,15 @@ static bool persist_save(struct ilka_persist *p)
     }
 
 
-    if (pid) {
+    if (!pid) {
+        _persist_save_journal(p, old_marks);
+        _exit(0);
+    }
+    else {
         free(old_marks);
         bool ret = _persist_wait(pid);
 
         slock_unlock(&p->lock);
         return ret;
     }
-
-    else {
-        struct ilka_journal j;
-        if (!journal_init(&j, p->region, p->file)) ilka_abort();
-
-        for (size_t i = bitfields_next(old_marks, 0, marks_bits);
-             i < marks_bits;
-             i = bitfields_next(old_marks, i + 1, marks_bits))
-        {
-            size_t off = i % marks_block_bits;
-            size_t len = marks_min_len;
-
-            size_t high = i / marks_block_bits;
-
-            if (high) {
-                len <<= high - 1;
-                off = (off | marks_low_bits) << high;
-            }
-
-            off <<= marks_trunc_bits;
-
-            if (!journal_add(&j, off, len)) ilka_abort();
-        }
-
-        if (!journal_finish(&j)) ilka_abort();
-
-        exit(0);
-    }
-
-    ilka_unreachable();
 }
