@@ -55,7 +55,7 @@ static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
         size_t msb = clz(off);
         msb = msb < 64 ? 63 - msb : 0;
 
-        size_t low, high, len;
+        size_t high, low, len;
 
         if (msb < marks_low_bits) {
             high = 0;
@@ -64,8 +64,8 @@ static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
         }
         else {
             high = (msb - marks_low_bits) + 1;
-            low = (off >> (high - 1)) & (marks_low_bits - 1);
-            len = marks_min_len << high;
+            low = (off >> (high - 1)) & ((1UL << marks_low_bits) - 1);
+            len = marks_min_len << (high - 1);
         }
 
         size_t i = high * marks_block_bits + low;
