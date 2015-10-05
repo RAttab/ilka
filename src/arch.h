@@ -7,5 +7,5 @@
 
 #pragma once
 
-#define ILKA_CACHE_LINE 64ULL  // bytes
-#define ILKA_PAGE_SIZE 4096ULL // bytes
+#define ILKA_CACHE_LINE 64UL  // bytes
+#define ILKA_PAGE_SIZE 4096UL // bytes
