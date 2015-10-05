@@ -5,7 +5,6 @@
    Utils compilation unit.
 */
 
-#include <time.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

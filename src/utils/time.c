@@ -65,3 +65,102 @@ bool ilka_nsleep(uint64_t nanos)
         return false;
     }
 }
+
+
+// -----------------------------------------------------------------------------
+// prof
+// -----------------------------------------------------------------------------
+
+static struct ilka_prof *prof_roots = NULL;
+static __thread struct ilka_prof *prof_current = NULL;
+
+struct ilka_prof_data ilka_prof_enter(struct ilka_prof *p, const char *title)
+{
+    if (!p->title && !ilka_atomic_xchg(&p->title, title, morder_relaxed)) {
+        struct ilka_prof *old = ilka_atomic_load(&prof_roots, morder_relaxed);
+        do {
+            p->next = old;
+        } while (!ilka_atomic_cmp_xchg(&prof_roots, &old, p, morder_release));
+    }
+
+    struct ilka_prof_data data = { .parent = prof_current };
+    ilka_atomic_fetch_add(&p->hits, 1, morder_relaxed);
+
+    if (prof_current) {
+        for (size_t i = 0; i < ilka_prof_max_children; ++i) {
+
+            struct ilka_prof *node =
+                ilka_atomic_load(&prof_current->children[i].p, morder_relaxed);
+
+          restart:
+
+            if (!node) {
+                if (!ilka_atomic_cmp_xchg(&prof_current->children[i].p, &node, p, morder_relaxed))
+                    goto restart;
+            }
+            else if (node != p) continue;
+
+            data.index = i;
+            ilka_atomic_fetch_add(&prof_current->children[i].hits, 1, morder_relaxed);
+            break;
+        }
+    }
+
+    prof_current = p;
+
+    data.start = ilka_now();
+    return data;
+}
+
+void ilka_prof_exit(struct ilka_prof *p, struct ilka_prof_data *data)
+{
+    uint64_t elapsed = ilka_elapsed(&data->start) * 1000000000;
+
+    ilka_atomic_fetch_add(&p->elapsed, elapsed, morder_relaxed);
+
+    if (data->parent) {
+        ilka_atomic_fetch_add(
+                &data->parent->children[data->index].elapsed,
+                elapsed, morder_relaxed);
+    }
+
+    prof_current = data->parent;
+}
+
+static void prof_print(
+        const char *title,
+        size_t hits, double hit_ratio,
+        uint64_t elapsed, double elapsed_pct,
+        const char *prefix)
+{
+    double latency = elapsed / hits;
+    latency /= 1000000000;
+
+    char buf[1024];
+    size_t i = snprintf(buf, sizeof(buf),
+            "%s%-40s %8lu (%10.2f) ", prefix, title, hits, hit_ratio);
+    i += ilka_print_elapsed(buf + i, sizeof(buf) - i, latency);
+    ilka_log("prof", "%s (%6.2f%%)", buf, elapsed_pct * 100);
+}
+
+void ilka_prof_dump()
+{
+    struct ilka_prof *p = prof_roots;
+
+    while (p) {
+        prof_print(p->title, p->hits, 1, p->elapsed, 1.0, "");
+
+        for (size_t i = 0; i < ilka_prof_max_children; ++i) {
+            if (!p->children[i].p) continue;
+
+            size_t hits = p->children[i].hits;
+            uint64_t elapsed = p->children[i].elapsed;
+
+            prof_print(p->children[i].p->title,
+                    hits, hits / p->hits, elapsed,
+                    (double) elapsed / p->elapsed, "    ");
+        }
+
+        p = p->next;
+    }
+}

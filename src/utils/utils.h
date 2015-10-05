@@ -3,6 +3,10 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
+#pragma once
+
+#include <time.h>
+
 #include "arch.h"
 #include "compiler.h"
 #include "atomic.h"
