@@ -86,44 +86,21 @@ static bool journal_add(struct ilka_journal *j, ilka_off_t off, size_t len)
             return false;
         }
 
-        for (size_t i = 0; i < j->len; ++i) new[i] = j->nodes[i];
-
+        memcpy(new, j->nodes, j->len * sizeof(struct journal_node));
         free(j->nodes);
         j->nodes = new;
     }
 
-    size_t i = 0;
-    for (; i < j->len; ++i) {
-        if (j->nodes[i].off > off) break;
-    }
+    struct journal_node *prev = &j->nodes[j->len - 1];
 
-    j->len++;
-    struct journal_node tmp;
-    struct journal_node node = { off, len };
-
-    for (; i < j->len; ++i) {
-        tmp = j->nodes[i];
-        j->nodes[i] = node;
-        node = tmp;
+    if (prev->off + prev->len == off)
+        prev->len += len;
+    else {
+        j->nodes[j->len] = (struct journal_node) { off, len };
+        j->len++;
     }
 
     return true;
-}
-
-static size_t _journal_next(
-        struct ilka_journal *j, size_t i, struct journal_node *node)
-{
-    *node = j->nodes[i++];
-
-    for (; i < j->len; i++) {
-        ilka_off_t end = node->off + node->len;
-        if (j->nodes[i].off > end) break;
-        if (j->nodes[i].off + j->nodes[i].len <= end) continue;
-
-        node->len += end - j->nodes[i].off + j->nodes[i].len;
-    }
-
-    return i;
 }
 
 static bool _journal_write(int fd, const void *ptr, size_t len)
@@ -152,16 +129,15 @@ static bool _journal_write_log(struct ilka_journal *j)
         return false;
     }
 
-    struct journal_node node;
-    size_t i = _journal_next(j, 0, &node);
-    for (; i < j->len; i = _journal_next(j, i, &node)) {
-        if (!_journal_write(fd, &node, sizeof(node))) goto fail;
-        if (!_journal_write(fd, ilka_read(j->region, node.off, node.len), node.len))
+    for (size_t i = 0; i < j->len; ++i) {
+        struct journal_node *node = &j->nodes[i];
+        if (!_journal_write(fd, node, sizeof(struct journal_node))) goto fail;
+        if (!_journal_write(fd, ilka_read(j->region, node->off, node->len), node->len))
             goto fail;
     }
 
-    node = (struct journal_node) {0, 0};
-    _journal_write(fd, &node, sizeof(node));
+    struct journal_node eof = {0, 0};
+    _journal_write(fd, &eof, sizeof(struct journal_node));
 
     if (fdatasync(fd) == -1) {
         ilka_fail_errno("unable to fsync journal: %s", file);
@@ -197,19 +173,18 @@ static bool _journal_write_region(struct ilka_journal *j)
         return false;
     }
 
-    struct journal_node node;
-    size_t i = _journal_next(j, 0, &node);
-    for (; i < j->len; i = _journal_next(j, i, &node)) {
-        const void *ptr = ilka_read(j->region, node.off, node.len);
+    for (size_t i = 0; i < j->len; ++i) {
+        struct journal_node *node = &j->nodes[i];
+        const void *ptr = ilka_read(j->region, node->off, node->len);
 
-        ssize_t ret = pwrite(fd, ptr, node.len, node.off);
+        ssize_t ret = pwrite(fd, ptr, node->len, node->off);
         if (ret == -1) {
             ilka_fail_errno("unable to write to region");
             goto fail;
         }
 
-        if ((size_t) ret != node.len) {
-            ilka_fail("incomplete write to region: %lu != %lu", ret, node.len);
+        if ((size_t) ret != node->len) {
+            ilka_fail("incomplete write to region: %lu != %lu", ret, node->len);
             goto fail;
         }
     }
