@@ -7,10 +7,57 @@
 
 
 // -----------------------------------------------------------------------------
-// persist test
+// marks
 // -----------------------------------------------------------------------------
 
-struct basics_test
+START_TEST(marks_test_mt)
+{
+    const char *file = "blah";
+    const size_t max_len = 1UL << 20;
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open(file, &options);
+
+    ilka_off_t root;
+    {
+        size_t n = max_len + ILKA_CACHE_LINE;
+        root = ilka_alloc(r, n);
+        memset(ilka_write(r, root, n), 0, n);
+        ilka_save(r);
+    }
+
+    uint8_t c = 0;
+    for (size_t n = 1; n < max_len; n *= 8) {
+        for (size_t j = 0; j < 3; ++j) {
+            size_t off = root + j;
+
+            memset(ilka_write(r, off, n), ++c, n);
+            if (!ilka_save(r)) ilka_abort();
+
+            struct ilka_options options = { .open = true, .read_only = true };
+            struct ilka_region *tr = ilka_open(file, &options);
+
+            const uint8_t *p = ilka_read(tr, off, n);
+            for (size_t i = 0; i < n; ++i) {
+                ilka_assert(p[i] == c,
+                        "unexpected value (%lu != %lu): i=%lu, n=%lu, j=%lu, off=%p",
+                        (size_t) p[i], (size_t) c, i, n, j, (void *) off);
+            }
+
+            if (!ilka_close(tr)) ilka_abort();
+        }
+    }
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
+// save
+// -----------------------------------------------------------------------------
+
+struct save_test
 {
     const char *file;
     struct ilka_region *r;
@@ -21,9 +68,9 @@ struct basics_test
     uint64_t done;
 };
 
-void run_basics_test(size_t id, void *data)
+void run_save_test(size_t id, void *data)
 {
-    struct basics_test *t = data;
+    struct save_test *t = data;
     enum {
         n = ILKA_PAGE_SIZE,
         m = sizeof(uint64_t),
@@ -90,7 +137,7 @@ void run_basics_test(size_t id, void *data)
     }
 }
 
-START_TEST(basics_test_mt)
+START_TEST(save_test_mt)
 {
     enum { threads = 128 };
 
@@ -104,13 +151,13 @@ START_TEST(basics_test_mt)
     memset(ilka_write(r, root, n), 0, n);
     ilka_set_root(r, root);
 
-    struct basics_test data = {
+    struct save_test data = {
         .r = r,
         .file = file,
         .runs = 10,
         .threads = threads,
     };
-    ilka_run_threads(run_basics_test, &data);
+    ilka_run_threads(run_save_test, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -123,7 +170,8 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, basics_test_mt, true);
+    ilka_tc(s, marks_test_mt, true);
+    ilka_tc(s, save_test_mt, true);
 }
 
 int main(void)

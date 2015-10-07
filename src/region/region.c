@@ -160,7 +160,9 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     file_grow(r->fd, new_len);
     mmap_remap(&r->mmap, old_len, new_len);
 
-    ilka_atomic_store(&r->len, new_len, morder_relaxed);
+    // morder_release: ensure that the region is fully grown before publishing
+    // the new size.
+    ilka_atomic_store(&r->len, new_len, morder_release);
 
     slock_unlock(&r->lock);
 
@@ -199,7 +201,7 @@ void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 
 bool ilka_save(struct ilka_region *r)
 {
-    return persist_save(&r->persist);
+    return persist_save(&r->persist, r->len);
 }
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)

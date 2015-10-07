@@ -48,7 +48,6 @@ static void persist_close(struct ilka_persist *p)
 static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
 {
     ilka_off_t end = off + len;
-    end >>= marks_trunc_bits;
     off >>= marks_trunc_bits;
 
     do {
@@ -66,16 +65,21 @@ static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
             high = (msb - marks_low_bits) + 1;
             low = (off >> (high - 1)) & ((1UL << marks_low_bits) - 1);
             len = marks_min_len << (high - 1);
+
+            // remove any excess bits to ensure that the off increase will
+            // correctly represent the area marked for saving.
+            off &= ~((1UL << (high - 1)) - 1);
         }
 
         size_t i = high * marks_block_bits + low;
         ilka_atomic_fetch_or(&p->marks[i / 64], 1UL << (i % 64), morder_relaxed);
 
-        off += (len >> marks_trunc_bits);
-    } while (off < end);
+        off += len >> marks_trunc_bits;
+    } while ((off << marks_trunc_bits) < end);
 }
 
-static void _persist_save_journal(struct ilka_persist *p, uint64_t *marks)
+static void _persist_save_journal(
+        struct ilka_persist *p, uint64_t *marks, size_t region_len)
 {
     struct ilka_journal j;
     if (!journal_init(&j, p->region, p->file)) ilka_abort();
@@ -90,10 +94,11 @@ static void _persist_save_journal(struct ilka_persist *p, uint64_t *marks)
 
         if (high) {
             len <<= high - 1;
-            off = (off | marks_low_bits) << high;
+            off = (off | (1UL << marks_low_bits)) << (high - 1);
         }
 
         off <<= marks_trunc_bits;
+        if (off + len > region_len) len = region_len - off;
 
         if (!journal_add(&j, off, len)) ilka_abort();
     }
@@ -125,7 +130,7 @@ static bool _persist_wait(pid_t pid)
     return true;
 }
 
-static bool persist_save(struct ilka_persist *p)
+static bool persist_save(struct ilka_persist *p, size_t region_len)
 {
     uint64_t *old_marks;
     uint64_t *new_marks = calloc(marks_words, sizeof(uint64_t));
@@ -152,7 +157,7 @@ static bool persist_save(struct ilka_persist *p)
 
 
     if (!pid) {
-        _persist_save_journal(p, old_marks);
+        _persist_save_journal(p, old_marks, region_len);
         _exit(0);
     }
     else {
