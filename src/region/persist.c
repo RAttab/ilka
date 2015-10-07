@@ -130,7 +130,7 @@ static bool _persist_wait(pid_t pid)
     return true;
 }
 
-static bool persist_save(struct ilka_persist *p, size_t region_len)
+static bool persist_save(struct ilka_persist *p)
 {
     uint64_t *old_marks;
     uint64_t *new_marks = calloc(marks_words, sizeof(uint64_t));
@@ -157,7 +157,7 @@ static bool persist_save(struct ilka_persist *p, size_t region_len)
 
 
     if (!pid) {
-        _persist_save_journal(p, old_marks, region_len);
+        _persist_save_journal(p, old_marks, ilka_len(p->region));
         _exit(0);
     }
     else {

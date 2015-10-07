@@ -33,6 +33,8 @@ typedef uint16_t ilka_epoch_t;
 
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
 bool ilka_close(struct ilka_region *r);
+
+size_t ilka_len(struct ilka_region *r);
 ilka_off_t ilka_grow(struct ilka_region *r, size_t len);
 
 ilka_off_t ilka_get_root(struct ilka_region *r);

@@ -148,6 +148,11 @@ bool ilka_close(struct ilka_region *r)
     return true;
 }
 
+size_t ilka_len(struct ilka_region *r)
+{
+    return ilka_atomic_load(&r->len, morder_relaxed);
+}
+
 ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
 {
     len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
@@ -201,7 +206,7 @@ void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 
 bool ilka_save(struct ilka_region *r)
 {
-    return persist_save(&r->persist, r->len);
+    return persist_save(&r->persist);
 }
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
