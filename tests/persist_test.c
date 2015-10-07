@@ -10,7 +10,7 @@
 // marks
 // -----------------------------------------------------------------------------
 
-START_TEST(marks_test_mt)
+START_TEST(marks_test_st)
 {
     const char *file = "blah";
     const size_t max_len = 1UL << 20;
@@ -47,6 +47,115 @@ START_TEST(marks_test_mt)
             if (!ilka_close(tr)) ilka_abort();
         }
     }
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+struct marks_bench
+{
+    struct ilka_region *r;
+    const char *title;
+    size_t runs;
+
+    ilka_off_t off;
+    size_t len;
+};
+
+void run_marks_bench(size_t id, void *data)
+{
+    struct marks_bench *t = data;
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < t->runs; ++i)
+            ilka_write(t->r, t->off, t->len);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->runs, elapsed);
+}
+
+START_TEST(marks_small_bench_st)
+{
+    enum { len = sizeof(uint64_t) };
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct marks_bench data = {
+        .r = r,
+        .title = "marks_small_bench_st",
+        .runs = 10000,
+        .off = ilka_alloc(r, len),
+        .len = len
+    };
+
+    run_marks_bench(0, &data);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+START_TEST(marks_small_bench_mt)
+{
+    enum { len = sizeof(uint64_t) };
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct marks_bench data = {
+        .r = r,
+        .title = "marks_small_bench_mt",
+        .runs = 10000,
+        .off = ilka_alloc(r, len),
+        .len = len
+    };
+
+    ilka_run_threads(run_marks_bench, &data);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+START_TEST(marks_large_bench_st)
+{
+    enum { len = ILKA_PAGE_SIZE };
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct marks_bench data = {
+        .r = r,
+        .title = "marks_large_bench_st",
+        .runs = 10000,
+        .off = ilka_alloc(r, len),
+        .len = len
+    };
+
+    run_marks_bench(0, &data);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+START_TEST(marks_large_bench_mt)
+{
+    enum { len = ILKA_PAGE_SIZE };
+
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct marks_bench data = {
+        .r = r,
+        .title = "marks_large_bench_mt",
+        .runs = 10000,
+        .off = ilka_alloc(r, len),
+        .len = len
+    };
+
+    ilka_run_threads(run_marks_bench, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -170,7 +279,12 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, marks_test_mt, true);
+    ilka_tc(s, marks_test_st, true);
+    ilka_tc(s, marks_small_bench_st, true);
+    ilka_tc(s, marks_small_bench_mt, true);
+    ilka_tc(s, marks_large_bench_st, true);
+    ilka_tc(s, marks_large_bench_mt, true);
+
     ilka_tc(s, save_test_mt, true);
 }
 
