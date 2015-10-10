@@ -25,38 +25,40 @@ struct ilka_mmap
     size_t anon_len;
 
     struct mmap_node head;
+
+    struct mmap_node *vmas;
+    struct mmap_node *last_vma;
 };
 
 static void * _mmap_map(struct ilka_mmap *m, ilka_off_t off, size_t len)
 {
-    if (m->anon_len < m->reserved) {
-        if (m->anon && munmap(m->anon, m->anon_len) == -1) {
-            ilka_fail_errno("unable to munmap anon");
-            return NULL;
-        }
-
-        m->anon_len = m->reserved;
-        m->anon = mmap(NULL, m->anon_len, m->prot, MAP_ANON | MAP_PRIVATE, -1, 0);
-        if (m->anon == MAP_FAILED) {
-            ilka_fail_errno("unable to mmap anon: %p", ((void*) m->anon_len));
-            return NULL;
-        }
-    }
-
-    void *ptr;
-    if (len > m->anon_len)
-        ptr = mmap(NULL, len, m->prot, m->flags, m->fd, off);
-    else {
-        ptr = mmap(m->anon, len, m->prot, m->flags | MAP_FIXED, m->fd, off);
-        m->anon = ((uint8_t*) m->anon) + len;
-        m->anon_len -= len;
-    }
-
-    if (ptr == MAP_FAILED) {
-        ilka_fail_errno("unable to mmap '%p' at '%p' for length '%p'",
-                ptr, (void*) off, (void*) len);
+    if (m->anon && munmap(m->anon, m->anon_len) == -1) {
+        ilka_fail_errno("unable to munmap anon");
         return NULL;
     }
+
+    m->anon_len = len + m->reserved;
+    m->anon = mmap(NULL, m->anon_len, m->prot, MAP_ANON | MAP_PRIVATE, -1, 0);
+    if (m->anon == MAP_FAILED) {
+        ilka_fail_errno("unable to mmap anon: %p", ((void *) m->anon_len));
+        return NULL;
+    }
+
+    void *ptr = mmap(m->anon, len, m->prot, m->flags | MAP_FIXED, m->fd, off);
+    if (ptr == MAP_FAILED) {
+        ilka_fail_errno("unable to mmap '%p' at '%p' for length '%p'",
+                ptr, (void *) off, (void *) len);
+        return NULL;
+    }
+
+    struct mmap_node *vma = calloc(1, sizeof(struct mmap_node));
+    *vma = (struct mmap_node) { .ptr = ptr, .len = len };
+    if (!m->vmas) m->vmas = vma;
+    else m->last_vma->next = vma;
+    m->last_vma = vma;
+
+    m->anon_len -= len;
+    m->anon = m->anon_len ? ((uint8_t *) m->anon) + len : NULL;
 
     return ptr;
 }
@@ -64,7 +66,8 @@ static void * _mmap_map(struct ilka_mmap *m, ilka_off_t off, size_t len)
 static int _mmap_remap(
         struct ilka_mmap *m, void *ptr, size_t old_len, size_t new_len)
 {
-    if (new_len > m->anon_len) return false;
+    size_t diff = new_len - old_len;
+    if (diff > m->anon_len) return false;
 
     // This has a potential race condition where a mapping takes the freed-up
     // anon slot before we can remap. Sadly you can't MREMAP_FIXED without
@@ -72,17 +75,26 @@ static int _mmap_remap(
     // well.
     //
     // Note that if the vma is snagged before we can grab it, we just fall-back
-    // on moving the entire region.
+    // on creating a new vma.
 
-    size_t diff = new_len - old_len;
     if (munmap(m->anon, diff) == -1) {
         ilka_fail_errno("unable to munmap anon");
         return -1;
     }
-    m->anon = ((uint8_t *) m->anon) + diff;
     m->anon_len -= diff;
+    m->anon = m->anon_len ? ((uint8_t *) m->anon) + diff : NULL;
 
-    if (mremap(ptr, old_len, new_len, 0) != MAP_FAILED) return 1;
+    // Since our current node might be a composite of multiple vmas, we only
+    // specify the last page of the node and the let the kernel figure out which
+    // vma it belongs to and adjust the values accordingly.
+    void *last_page = ((uint8_t *) ptr ) + old_len - ILKA_PAGE_SIZE;
+    size_t adj_old_len = ILKA_PAGE_SIZE;
+    size_t adj_new_len = diff + ILKA_PAGE_SIZE;
+
+    if (mremap(last_page, adj_old_len, adj_new_len, 0) != MAP_FAILED) {
+        m->last_vma->len += diff;
+        return 1;
+    }
     if (errno == ENOMEM) return 0;
 
     ilka_fail_errno("unable to remap '%p' from '%p' to '%p'",
@@ -113,8 +125,8 @@ static bool mmap_init(
 
 static bool mmap_close(struct ilka_mmap *m)
 {
-    struct mmap_node *node = &m->head;
-    do {
+    struct mmap_node *node = m->vmas;
+    while (node) {
         if (munmap(node->ptr, node->len) == -1) {
             ilka_fail_errno("unable to unmap '%p' with length '%p'",
                     node->ptr, (void *) node->len);
@@ -125,6 +137,13 @@ static bool mmap_close(struct ilka_mmap *m)
         if (node != &m->head) free(node);
         node = next;
     } while (node);
+
+    node = m->head.next;
+    while (node) {
+        struct mmap_node *next = node->next;
+        free(node);
+        node = next;
+    }
 
     return true;
 }
@@ -188,28 +207,38 @@ static bool mmap_coalesce(struct ilka_mmap *m)
         return false;
     }
 
-    if (munmap(m->anon, m->anon_len) == -1) {
+    if (m->anon && munmap(m->anon, m->anon_len) == -1) {
         ilka_fail_errno("unable to munmap anon");
         goto fail;
     }
-    m->anon = ((uint8_t*) ptr) + len;
+    m->anon = ((uint8_t *) ptr) + len;
     m->anon_len = m->reserved;
 
     size_t off = 0;
-    node = &m->head;
+    node = m->vmas;
 
     do {
         int flags = MREMAP_MAYMOVE | MREMAP_FIXED;
         void *ret = mremap(node->ptr, node->len, node->len, flags, ptr + off);
-        ilka_assert(ret != MAP_FAILED, "unable to mremap fixed - can't recover");
+        if (ret == MAP_FAILED) {
+            // If this fails then something has gone horribly wrong.
+            ilka_fail_errno("unable to mremap fixed - can't recover");
+            ilka_abort();
+        }
 
+        node->ptr = ptr + off;
         off += node->len;
-        struct mmap_node *next = node->next;
-        if (node != &m->head) free(node);
-        node = next;
+        node = node->next;
     } while (node);
 
+    node = m->head.next;
+    while (node) {
+        struct mmap_node *next = node->next;
+        free(node);
+        node = next;
+    }
     m->head = (struct mmap_node) { ptr, len, NULL };
+
     return true;
 
   fail:

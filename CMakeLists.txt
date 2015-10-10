@@ -107,7 +107,9 @@ endfunction()
 
 ilka_test(bits)
 ilka_test(bit_coder)
-# ilka_test(key)
+ilka_test(mmap)
 ilka_test(alloc)
 ilka_test(epoch)
 ilka_test(persist)
+
+# ilka_test(key)
