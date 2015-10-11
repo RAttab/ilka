@@ -6,6 +6,12 @@
 #include "check.h"
 
 
+void coalesce(struct ilka_region *r)
+{
+    ilka_world_stop(r);
+    ilka_world_resume(r);
+}
+
 // -----------------------------------------------------------------------------
 // coalesce test
 // -----------------------------------------------------------------------------
@@ -37,9 +43,7 @@ START_TEST(coalesce_test_st)
             memset(ilka_write(r, off, n), pages++, n);
         }
 
-        // coalesce happens on world stop.
-        ilka_world_stop(r);
-        ilka_world_resume(r);
+        coalesce(r);
     }
 
     for (size_t i = 0; i < pages; ++i) {
@@ -55,14 +59,61 @@ START_TEST(coalesce_test_st)
 END_TEST
 
 
-
 // -----------------------------------------------------------------------------
 // access bench
 // -----------------------------------------------------------------------------
 
-START_TEST(access_bench_st)
+struct access_bench
 {
+    struct ilka_region *r;
+    const char *title;
 
+    size_t n;
+    ilka_off_t off;
+};
+
+void run_access_bench(size_t id, void *data)
+{
+    struct access_bench *t = data;
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < t->n; ++i)
+            ilka_read(t->r, t->off, sizeof(uint64_t));
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+}
+
+START_TEST(access_bench_st_mt)
+{
+    struct ilka_options options = {
+        .open = true,
+        .create = true,
+        .vma_reserved = ILKA_PAGE_SIZE
+    };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    ilka_off_t pages[32];
+
+    for (size_t i = 0; i < 32; ++i)
+        pages[i] = ilka_grow(r, 2 * ILKA_PAGE_SIZE);
+
+    char title[256];
+    struct access_bench data = { .r = r, .title = title, .n = 10000000 };
+
+    for (size_t i = 1; i <= 32; i *= 2) {
+        data.off = pages[i - 1];
+
+        snprintf(title, sizeof(title), "access_%lu_bench_st", i);
+        run_access_bench(0, &data);
+
+        snprintf(title, sizeof(title), "access_%lu_bench_mt", i);
+        ilka_run_threads(run_access_bench, &data);
+    }
+
+    if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
@@ -74,7 +125,7 @@ END_TEST
 void make_suite(Suite *s)
 {
     ilka_tc(s, coalesce_test_st, true);
-    ilka_tc(s, access_bench_st, false);
+    ilka_tc(s, access_bench_st_mt, true);
 }
 
 int main(void)
