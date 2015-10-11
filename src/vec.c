@@ -278,13 +278,7 @@ bool ilka_vec_remove(struct ilka_vec *v, size_t i, size_t n)
 
     // since we're shrinking the region, if resize fails then we can just keep
     // the current cap and update len.
-    if (!_vec_resize(v, meta, meta->len - n)) {
-        if (!meta->len) {
-            ilka_free(v->r, meta->data, meta->cap * meta->item_len);
-            meta->data = 0;
-        }
-        meta->len = 0;
-    }
+    if (!_vec_resize(v, meta, meta->len - n)) meta->len -= n;
 
     return true;
 }
