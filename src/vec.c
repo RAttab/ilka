@@ -280,7 +280,7 @@ bool ilka_vec_remove(struct ilka_vec *v, size_t i, size_t n)
     // the current cap and update len.
     if (!_vec_resize(v, meta, meta->len - n)) {
         if (!meta->len) {
-            ilka_free(v->r, meta->data, meta->len * meta->item_len);
+            ilka_free(v->r, meta->data, meta->cap * meta->item_len);
             meta->data = 0;
         }
         meta->len = 0;
