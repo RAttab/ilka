@@ -113,4 +113,6 @@ ilka_test(alloc)
 ilka_test(epoch)
 ilka_test(persist)
 
+ilka_test(vec)
+
 # ilka_test(key)
