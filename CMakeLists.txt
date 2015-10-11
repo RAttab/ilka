@@ -76,7 +76,8 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 add_library(ilka SHARED
     src/ilka.c
     src/utils/utils.c
-    src/region/region.c)
+    src/region/region.c
+    src/vec.c)
 
 
 #------------------------------------------------------------------------------#
