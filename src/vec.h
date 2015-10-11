@@ -28,9 +28,9 @@ bool ilka_vec_resize(struct ilka_vec *v, size_t len);
 bool ilka_vec_reserve(struct ilka_vec *v, size_t cap);
 
 ilka_off_t ilka_vec_get(struct ilka_vec *v, size_t i);
-void * ilka_vec_write(struct ilka_vec *v, size_t i);
-const void * ilka_vec_read(struct ilka_vec *v, size_t i);
+void * ilka_vec_write(struct ilka_vec *v, size_t i, size_t n);
+const void * ilka_vec_read(struct ilka_vec *v, size_t i, size_t n);
 
-bool ilka_vec_append(struct ilka_vec *v, void *data);
-bool ilka_vec_insert(struct ilka_vec *v, size_t i, void *data);
+bool ilka_vec_append(struct ilka_vec *v, const void *data, size_t n);
+bool ilka_vec_insert(struct ilka_vec *v, const void *data, size_t i, size_t n);
 bool ilka_vec_remove(struct ilka_vec *v, size_t i, size_t n);

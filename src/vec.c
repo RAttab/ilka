@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 // -----------------------------------------------------------------------------
 // vec
 // -----------------------------------------------------------------------------
@@ -27,6 +28,7 @@ struct vec_meta
     ilka_off_t data;
 };
 
+static bool _vec_reserve(struct ilka_vec *v, struct vec_meta *meta, size_t cap);
 
 // -----------------------------------------------------------------------------
 // alloc & free
@@ -50,17 +52,9 @@ struct ilka_vec * ilka_vec_alloc(struct ilka_region *r, size_t item_len, size_t 
     if (!v->meta) goto fail_meta;
 
     struct vec_meta *meta = ilka_write(v->r, v->meta, sizeof(struct vec_meta));
-    *meta = (struct vec_meta) {
-        .item_len = item_len,
-        .len = 0,
-        .cap = cap ? ceil_pow2(cap) : 0,
-        .data = 0
-    };
+    *meta = (struct vec_meta) { .item_len = item_len };
 
-    if (meta->cap) {
-        meta->data = ilka_alloc(v->r, meta->cap * meta->item_len);
-        if (!meta->data) goto fail_data;
-    }
+    if (!_vec_reserve(v, meta, cap)) goto fail_data;
 
     return v;
 
@@ -128,8 +122,10 @@ static bool _vec_reserve(struct ilka_vec *v, struct vec_meta *meta, size_t cap)
     ilka_off_t data = ilka_alloc(v->r, cap * meta->item_len);
     if (!data) return false;
 
-    size_t n = meta->len * meta->item_len;
-    memcpy(ilka_write(v->r, data, n), ilka_read(v->r, meta->data, n), n);
+    if (meta->len) {
+        size_t n = meta->len * meta->item_len;
+        memcpy(ilka_write(v->r, data, n), ilka_read(v->r, meta->data, n), n);
+    }
 
     meta->cap = cap;
     meta->data = data;
@@ -153,10 +149,14 @@ static bool _vec_resize(struct ilka_vec *v, struct vec_meta *meta, size_t len)
     }
 
     size_t cap = ceil_pow2(len);
-    ilka_off_t data = ilka_alloc(v->r, cap * meta->item_len);
 
-    size_t n = len * meta->item_len;
-    memmove(ilka_write(v->r, data, n), ilka_read(v->r, meta->data, n), n);
+    ilka_off_t data = ilka_alloc(v->r, cap * meta->item_len);
+    if (!data) return  false;
+
+    if (meta->len) {
+        size_t n = len * meta->item_len;
+        memmove(ilka_write(v->r, data, n), ilka_read(v->r, meta->data, n), n);
+    }
 
     meta->len = len;
     meta->cap = cap;
@@ -187,10 +187,10 @@ ilka_off_t ilka_vec_off(struct ilka_vec *v)
     return v->meta;
 }
 
-static ilka_off_t _vec_get(const struct vec_meta *meta, size_t i)
+static ilka_off_t _vec_get(const struct vec_meta *meta, size_t i, size_t n)
 {
-    if (ilka_unlikely(i >= meta->len)) {
-        ilka_fail("out-of-bound access: %lu > %lu", i, meta->len);
+    if (ilka_unlikely(i + n >= meta->len)) {
+        ilka_fail("out-of-bound access: %lu > %lu", i + n, meta->len);
         return 0;
     }
 
@@ -200,19 +200,19 @@ static ilka_off_t _vec_get(const struct vec_meta *meta, size_t i)
 ilka_off_t ilka_vec_get(struct ilka_vec *v, size_t i)
 {
     const struct vec_meta *meta = ilka_read(v->r, v->meta, sizeof(struct vec_meta));
-    return _vec_get(meta, i);
+    return _vec_get(meta, i, 1);
 }
 
-const void * ilka_vec_read(struct ilka_vec *v, size_t i)
+const void * ilka_vec_read(struct ilka_vec *v, size_t i, size_t n)
 {
     const struct vec_meta *meta = ilka_read(v->r, v->meta, sizeof(struct vec_meta));
-    return ilka_read(v->r, _vec_get(meta, i), meta->item_len);
+    return ilka_read(v->r, _vec_get(meta, i, n), n * meta->item_len);
 }
 
-void * ilka_vec_write(struct ilka_vec *v, size_t i)
+void * ilka_vec_write(struct ilka_vec *v, size_t i, size_t n)
 {
     const struct vec_meta *meta = ilka_read(v->r, v->meta, sizeof(struct vec_meta));
-    return ilka_write(v->r, _vec_get(meta, i), meta->item_len);
+    return ilka_write(v->r, _vec_get(meta, i, n), n * meta->item_len);
 }
 
 
@@ -220,20 +220,20 @@ void * ilka_vec_write(struct ilka_vec *v, size_t i)
 // writes
 // -----------------------------------------------------------------------------
 
-bool ilka_vec_append(struct ilka_vec *v, void *data)
+bool ilka_vec_append(struct ilka_vec *v, const void *data, size_t n)
 {
     struct vec_meta *meta = ilka_write(v->r, v->meta, sizeof(struct vec_meta));
-    if (!_vec_resize(v, meta, meta->len + 1)) return false;
+    if (!_vec_resize(v, meta, meta->len + n)) return false;
 
     if (data) {
-        size_t n = meta->item_len;
-        memcpy(ilka_write(v->r, _vec_get(meta, meta->len), n), data, n);
+        size_t len = n * meta->item_len;
+        memcpy(ilka_write(v->r, _vec_get(meta, meta->len, n), len), data, len);
     }
 
     return true;
 }
 
-bool ilka_vec_insert(struct ilka_vec *v, size_t i, void *data)
+bool ilka_vec_insert(struct ilka_vec *v, const void *data, size_t i, size_t n)
 {
     struct vec_meta *meta = ilka_write(v->r, v->meta, sizeof(struct vec_meta));
 
@@ -242,16 +242,16 @@ bool ilka_vec_insert(struct ilka_vec *v, size_t i, void *data)
         return false;
     }
 
-    if (!_vec_resize(v, meta, meta->len + 1)) return false;
+    if (!_vec_resize(v, meta, meta->len + n)) return false;
 
     uint8_t *p = ilka_write(v->r,
             meta->data + i * meta->item_len,
-            (meta->len - i + 1) * meta->item_len);
+            (meta->len - i + n) * meta->item_len);
 
     size_t to_move = (meta->len - i) * meta->item_len;
-    memmove(p + meta->item_len, p, to_move);
+    memmove(p + n * meta->item_len, p, to_move);
 
-    if (data) memcpy(p, data, meta->item_len);
+    if (data) memcpy(p, data, n * meta->item_len);
 
     return true;
 }
@@ -265,15 +265,19 @@ bool ilka_vec_remove(struct ilka_vec *v, size_t i, size_t n)
         return false;
     }
 
-    uint8_t *p = ilka_write(v->r,
-            meta->data + i * meta->item_len,
-            (meta->len - i) * meta->item_len);
+    if (n != meta->len) {
+        uint8_t *p = ilka_write(v->r,
+                meta->data + i * meta->item_len,
+                (meta->len - i) * meta->item_len);
 
-    size_t to_move = (meta->len - (i + n)) * meta->item_len;
-    memmove(p, p + (n * meta->len), to_move);
+        size_t to_move = (meta->len - (i + n)) * meta->item_len;
+        memmove(p, p + (n * meta->len), to_move);
+    }
 
-    // we're a bit fucked if this fails since we already moved hte items.
-    if (!_vec_resize(v, meta, meta->len - n)) ilka_abort();
+    // since we're shrinking the region, if resize fails then we can just keep
+    // the current cap and update len.
+    if (!_vec_resize(v, meta, meta->len - n))
+        meta->len -= n;
 
     return true;
 }
