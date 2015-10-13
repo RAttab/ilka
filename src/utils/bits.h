@@ -29,7 +29,7 @@ inline uint64_t leading_bit(uint64_t x)
 inline int is_pow2(uint64_t x) { return pop(x) == 1; }
 inline uint64_t ceil_pow2(size_t x)
 {
-    return x ? leading_bit(x - 1) << 1 : 1;
+    return x > 1 ? leading_bit(x - 1) << 1 : 1;
 }
 
 inline size_t ceil_div(size_t n, size_t d)
