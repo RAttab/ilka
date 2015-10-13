@@ -129,7 +129,6 @@ static bool _vec_reserve(struct ilka_vec *v, struct vec_meta *meta, size_t cap)
 
     meta->cap = cap;
     meta->data = data;
-
     return true;
 }
 
@@ -137,31 +136,37 @@ static bool _vec_resize(struct ilka_vec *v, struct vec_meta *meta, size_t len)
 {
     if (!_vec_reserve(v, meta, len)) return false;
 
-    if (len > meta->cap / 2) {
-        meta->len = len;
-        return true;
-    }
-    else if (!len) {
+    if (!len) {
         ilka_free(v->r, meta->data, meta->cap * meta->item_len);
+        meta->cap = 0;
+        meta->len = 0;
         meta->data = 0;
-        meta->len = len;
         return true;
     }
 
-    size_t cap = ceil_pow2(len);
+    if (len <= meta->cap / 4) {
+        size_t cap = ceil_pow2(len);
+        if (cap == len) cap *= 2;
 
-    ilka_off_t data = ilka_alloc(v->r, cap * meta->item_len);
-    if (!data) return false;
+        ilka_off_t data = ilka_alloc(v->r, cap * meta->item_len);
+        if (!data) return false;
 
-    if (meta->len) {
-        size_t n = len * meta->item_len;
-        memmove(ilka_write(v->r, data, n), ilka_read(v->r, meta->data, n), n);
+        if (meta->len) {
+            size_t n = len * meta->item_len;
+            memmove(ilka_write(v->r, data, n), ilka_read(v->r, meta->data, n), n);
+        }
+
+        meta->cap = cap;
+        meta->data = data;
+    }
+
+    if (len > meta->len) {
+        size_t n = (len - meta->len) * meta->item_len;
+        void *p = ilka_write(v->r, meta->data + meta->len * meta->item_len, n);
+        memset(p, 0, n);
     }
 
     meta->len = len;
-    meta->cap = cap;
-    meta->data = data;
-
     return true;
 }
 
@@ -174,7 +179,7 @@ bool ilka_vec_reserve(struct ilka_vec *v, size_t cap)
 bool ilka_vec_resize(struct ilka_vec *v, size_t len)
 {
     struct vec_meta *meta = ilka_write(v->r, v->meta, sizeof(struct vec_meta));
-    return _vec_reserve(v, meta, len);
+    return _vec_resize(v, meta, len);
 }
 
 
@@ -239,7 +244,7 @@ bool ilka_vec_insert(struct ilka_vec *v, const void *data, size_t i, size_t n)
 {
     struct vec_meta *meta = ilka_write(v->r, v->meta, sizeof(struct vec_meta));
 
-    if (i >= meta->len) {
+    if (i > meta->len) {
         ilka_fail("out-of-bound access: %lu > %lu", i, meta->len);
         return false;
     }
@@ -262,7 +267,7 @@ bool ilka_vec_remove(struct ilka_vec *v, size_t i, size_t n)
 {
     struct vec_meta *meta = ilka_write(v->r, v->meta, sizeof(struct vec_meta));
 
-    if (i + n >= meta->len) {
+    if (i + n > meta->len) {
         ilka_fail("out-of-bound access: %lu > %lu", i + n, meta->len);
         return false;
     }
