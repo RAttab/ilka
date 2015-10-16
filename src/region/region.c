@@ -17,6 +17,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 
+// Private interface.
 static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
 
 #include "file.c"
@@ -34,15 +35,12 @@ static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
 static const uint64_t ilka_magic = 0x31906C0FFC1FC856;
 static const uint64_t ilka_version = 1;
 
-static const size_t ilka_min_size = (1 + alloc_min_pages) * ILKA_PAGE_SIZE;
-static const size_t ilka_alloc_start = 1 * ILKA_PAGE_SIZE;
-
 
 // -----------------------------------------------------------------------------
 // region
 // -----------------------------------------------------------------------------
 
-struct meta
+struct ilka_packed meta
 {
     uint64_t magic;
     uint64_t version;
@@ -88,8 +86,11 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     r->file = file;
     r->options = *options;
 
+    size_t min_size = sizeof(struct meta) + sizeof(struct alloc_region);
+    min_size = ceil_div(min_size, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
+
     if ((r->fd = file_open(file, &r->options)) == -1) goto fail_open;
-    if ((r->len = file_grow(r->fd, ilka_min_size)) == -1UL) goto fail_grow;
+    if ((r->len = file_grow(r->fd, min_size)) == -1UL) goto fail_grow;
     if (!mmap_init(&r->mmap, r->fd, r->len, &r->options)) goto fail_mmap;
     if (!persist_init(&r->persist, r, r->file)) goto fail_persist;
 
@@ -103,7 +104,7 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
         struct meta * m = ilka_write(r, 0, sizeof(struct meta));
         m->magic = ilka_magic;
         m->version = ilka_version;
-        m->alloc = ilka_alloc_start;
+        m->alloc = sizeof(struct meta);
     }
 
     if (meta->version != ilka_version) {

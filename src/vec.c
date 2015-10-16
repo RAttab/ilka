@@ -20,7 +20,7 @@ struct ilka_vec
     ilka_off_t meta;
 };
 
-struct vec_meta
+struct ilka_packed vec_meta
 {
     size_t item_len;
     size_t len;

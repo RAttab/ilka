@@ -145,7 +145,7 @@ struct ilka_alloc
     ilka_slock lock;
 };
 
-struct alloc_region
+struct ilka_packed alloc_region
 {
     ilka_off_t pages;
     ilka_off_t buckets[alloc_buckets];
