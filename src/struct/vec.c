@@ -68,9 +68,8 @@ bool ilka_vec_free(struct ilka_vec *v)
     if (meta->data)
         ilka_free(v->r, meta->data, meta->cap * meta->item_len);
     ilka_free(v->r, v->meta, sizeof(struct vec_meta));
-    free(v);
 
-    return true;
+    return ilka_vec_close(v);
 }
 
 
