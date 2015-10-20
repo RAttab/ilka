@@ -71,13 +71,13 @@ endif()
 # BUILD
 #------------------------------------------------------------------------------#
 
-include_directories("${PROJECT_SOURCE_DIR}/src")
+include_directories("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/deps")
 
 add_library(ilka SHARED
     src/ilka.c
     src/utils/utils.c
     src/region/region.c
-    src/vec.c)
+    src/struct/vec.c)
 
 
 #------------------------------------------------------------------------------#
@@ -114,5 +114,3 @@ ilka_test(epoch)
 ilka_test(persist)
 
 ilka_test(vec)
-
-# ilka_test(key)
