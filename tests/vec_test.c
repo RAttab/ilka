@@ -55,7 +55,7 @@ START_TEST(basics_test)
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct ilka_vec *v0 = ilka_vec_alloc(r, sizeof(uint64_t), 0);
+    struct ilka_vec *v0 = ilka_vec_alloc(r, sizeof(uint64_t));
     struct ilka_vec *v1 = ilka_vec_open(r, ilka_vec_off(v0));
 
     ck_assert(!ilka_vec_len(v0));
@@ -104,7 +104,11 @@ START_TEST(resize_test)
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t), 9);
+    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t));
+    ck_assert_int_eq(ilka_vec_len(v), 0);
+    ck_assert_int_eq(ilka_vec_cap(v), 0);
+
+    if (!ilka_vec_reserve(v, 9)) ilka_abort();
     ck_assert_int_eq(ilka_vec_len(v), 0);
     ck_assert_int_eq(ilka_vec_cap(v), 16);
 
@@ -154,7 +158,7 @@ START_TEST(append_test)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t), 0);
+    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t));
 
     uint64_t values[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
 
@@ -187,7 +191,7 @@ START_TEST(insert_test)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t), 0);
+    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t));
 
     uint64_t values[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
 
@@ -227,7 +231,7 @@ START_TEST(remove_test)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t), 0);
+    struct ilka_vec *v = ilka_vec_alloc(r, sizeof(uint64_t));
 
     uint64_t values[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
 

@@ -34,7 +34,7 @@ static bool _vec_reserve(struct ilka_vec *v, struct vec_meta *meta, size_t cap);
 // alloc & free
 // -----------------------------------------------------------------------------
 
-struct ilka_vec * ilka_vec_alloc(struct ilka_region *r, size_t item_len, size_t cap)
+struct ilka_vec * ilka_vec_alloc(struct ilka_region *r, size_t item_len)
 {
     if (!r) {
         ilka_fail("invalid nil value for region");
@@ -54,12 +54,8 @@ struct ilka_vec * ilka_vec_alloc(struct ilka_region *r, size_t item_len, size_t 
     struct vec_meta *meta = ilka_write(v->r, v->meta, sizeof(struct vec_meta));
     *meta = (struct vec_meta) { .item_len = item_len };
 
-    if (!_vec_reserve(v, meta, cap)) goto fail_data;
-
     return v;
 
-  fail_data:
-    ilka_free(v->r, v->meta, sizeof(struct vec_meta));
   fail_meta:
     free(v);
     return NULL;
