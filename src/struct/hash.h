@@ -37,7 +37,7 @@ bool ilka_hash_resize(struct ilka_hash *h, size_t len);
 int ilka_hash_has(struct ilka_hash *h, struct ilka_hash_key key);
 ilka_off_t ilka_hash_get(struct ilka_hash *h, struct ilka_hash_key key);
 
-struct ilka_hash_ret { int ok; ilka_off_t off; };
+struct ilka_hash_ret { int code; ilka_off_t off; };
 struct ilka_hash_ret ilka_hash_del(struct ilka_hash *h, struct ilka_hash_key key);
 struct ilka_hash_ret ilka_hash_put(
         struct ilka_hash *h, struct ilka_hash_key key, ilka_off_t value);
