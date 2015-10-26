@@ -41,3 +41,10 @@ struct ilka_hash_ret { int code; ilka_off_t off; };
 struct ilka_hash_ret ilka_hash_del(struct ilka_hash *h, struct ilka_hash_key key);
 struct ilka_hash_ret ilka_hash_put(
         struct ilka_hash *h, struct ilka_hash_key key, ilka_off_t value);
+struct ilka_hash_ret ilka_hash_xchg(
+        struct ilka_hash *h, struct ilka_hash_key key, ilka_off_t value);
+struct ilka_hash_ret ilka_hash_cmp_xchg(
+        struct ilka_hash *h,
+        struct ilka_hash_key key,
+        ilka_off_t *expected,
+        ilka_off_t value);

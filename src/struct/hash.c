@@ -15,9 +15,6 @@
 // config
 // -----------------------------------------------------------------------------
 
-static const uint64_t state_mask = 0x3UL;
-static const uint64_t mark_mask = 0x1UL;
-
 // must be consistent across restarts. We could save it in the region and
 // randomize on every new hash created which would make the whole thing more DoS
 // resistant. Will deal with that stuff later.
@@ -89,6 +86,12 @@ static struct ilka_hash_key key_from_off(struct ilka_region *r, ilka_off_t off)
     return (struct ilka_hash_key) { *len, data };
 }
 
+inline static bool key_check(
+        struct ilka_region *r, ilka_off_t off, struct ilka_hash_key key)
+{
+    return key_equals(key, key_from_off(r, off));
+}
+
 
 // -----------------------------------------------------------------------------
 // state
@@ -98,7 +101,7 @@ enum state
 {
     state_nil = 0,
     state_set = 1,
-    state_lock = 2,
+    state_move = 2,
     state_tomb = 3
 };
 
@@ -114,13 +117,46 @@ static inline ilka_off_t state_to(ilka_off_t v, enum state s)
 // -----------------------------------------------------------------------------
 // bucket
 // -----------------------------------------------------------------------------
+//
 // \todo: This code needs a review of the morder.
+//
+// \todo: we should only return ret_stop if we observe BOTH key and val to nil.
+//        otherwise, put returns a skip if it detects a half-entered key which
+//        means that we a put could terminate and not be immediately available
+//        to get subsequent get or del op due to a prior put operation having
+//        not completed.
 
 struct ilka_packed hash_bucket
 {
     ilka_off_t key;
     ilka_off_t val;
 };
+
+static struct ilka_hash_ret bucket_get(
+        struct hash_bucket *b, struct ilka_region *r, struct ilka_hash_key key)
+{
+    ilka_off_t old_key = ilka_atomic_load(&b->key, morder_relaxed);
+    switch (state_get(old_key)) {
+    case state_nil: return make_ret(ret_skip, 0);
+    case state_tomb: return make_ret(ret_skip, 0);
+    case state_move: return make_ret(ret_resize, 0);
+    case state_set:
+        if (!key_check(r, state_clear(old_key), key))
+            return make_ret(ret_skip, 0);
+        break;
+    }
+
+    ilka_off_t old_val = ilka_atomic_load(&b->val, morder_relaxed);
+    switch (state_get(old_val)) {
+    case state_nil: return make_ret(ret_skip, 0);
+    case state_tomb: return make_ret(ret_skip, 0);
+    case state_move: return make_ret(ret_resize, 0);
+    case state_set:
+        return make_ret(ret_ok, state_clear(old_val));
+    }
+
+    ilka_unreachable();
+}
 
 static void _bucket_tomb_part(ilka_off_t *v, enum morder mo)
 {
@@ -151,14 +187,12 @@ static struct ilka_hash_ret bucket_put(
     do {
         switch (state_get(old_key)) {
         case state_tomb: return make_ret(ret_skip, 0);
-        case state_lock: return make_ret(ret_resize, 0);
+        case state_move: return make_ret(ret_resize, 0);
 
         case state_set:
-        {
-            struct ilka_hash_key other = key_from_off(r, state_clear(old_key));
-            if (!key_equals(key, other)) return make_ret(ret_skip, 0);
+            if (!key_check(r, state_clear(old_key), key))
+                return make_ret(ret_skip, 0);
             goto break_key;
-        }
 
         case state_nil:
             if (!*key_off) *key_off = key_alloc(r, key);
@@ -176,7 +210,7 @@ static struct ilka_hash_ret bucket_put(
     do {
         switch (state_get(old_key)) {
         case state_tomb: return make_ret(ret_skip, 0);
-        case state_lock: return make_ret(ret_resize, 0);
+        case state_move: return make_ret(ret_resize, 0);
         case state_set: return make_ret(ret_skip, state_clear(old_val));
         case state_nil: new_val = state_to(value, state_set); break;
         }
@@ -194,9 +228,9 @@ static bool bucket_lock(struct hash_bucket *b)
     do {
         switch (state_get(old_key)) {
         case state_tomb: return false;
-        case state_lock: new_key = old_key; goto break_key_lock;
+        case state_move: new_key = old_key; goto break_key_lock;
         case state_nil: new_key = state_to(old_key, state_tomb); break;
-        case state_set: new_key = state_to(old_key, state_lock); break;
+        case state_set: new_key = state_to(old_key, state_move); break;
         }
 
         // morder_relaxed: we can commit the key with the value lock.
@@ -210,7 +244,7 @@ static bool bucket_lock(struct hash_bucket *b)
     do {
         switch (state_get(old_val)) {
         case state_tomb: return false;
-        case state_lock: new_val = old_val; goto break_val_lock;
+        case state_move: new_val = old_val; goto break_val_lock;
         case state_nil: new_val = state_to(old_val, state_tomb); break;
         case state_set: new_val = state_to(old_val, key_state); break;
         }
@@ -220,14 +254,14 @@ static bool bucket_lock(struct hash_bucket *b)
   break_val_lock: (void) 0;
 
     enum state val_state = state_get(new_key);
-    if (key_state == state_lock && val_state == state_tomb) {
+    if (key_state == state_move && val_state == state_tomb) {
         bucket_tomb(b);
         return false;
     }
 
     ilka_assert(key_state == val_state,
             "unmatched state for key and val: %d != %d", key_state, val_state);
-    return val_state == state_lock;
+    return val_state == state_move;
 }
 
 static struct ilka_hash_ret bucket_del(
@@ -235,23 +269,22 @@ static struct ilka_hash_ret bucket_del(
 {
     ilka_off_t old_key = ilka_atomic_load(&b->key, morder_relaxed);
     switch (state_get(old_key)) {
-    case state_nil: return make_ret(ret_stop, 0);
+    case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
-    case state_lock: return make_ret(ret_resize, 0);
-    case state_set: {
-        struct ilka_hash_key other = key_from_off(r, state_clear(old_key));
-        if (!key_equals(key, other)) return make_ret(ret_skip, 0);
+    case state_move: return make_ret(ret_resize, 0);
+    case state_set:
+        if (!key_check(r, state_clear(old_key), key))
+            return make_ret(ret_skip, 0);
         break;
-    }
     }
 
     ilka_off_t new_val;
     ilka_off_t old_val = ilka_atomic_load(&b->val, morder_relaxed);
     do {
         switch(state_get(old_val)) {
-        case state_nil: return make_ret(ret_stop, 0);
+        case state_nil: return make_ret(ret_skip, 0);
         case state_tomb: return make_ret(ret_skip, 0);
-        case state_lock: return make_ret(ret_resize, 0);
+        case state_move: return make_ret(ret_resize, 0);
         case state_set:
             new_val = state_to(old_val, state_tomb);
             break;
@@ -350,7 +383,7 @@ bool ilka_hash_free(struct ilka_hash *h)
         const struct hash_table *ht = table_read(h->r, table);
 
         for (size_t i = 0; i < ht->cap; ++i)
-            key_free(h->r, ht->buckets[i].key & ~state_mask);
+            key_free(h->r, state_clear(ht->buckets[i].key));
 
         ilka_off_t next = ht->next;
         ilka_free(h->r, table, table_size(ht->cap));
@@ -427,11 +460,26 @@ ilka_off_t ilka_hash_get(struct ilka_hash *h, struct ilka_hash_key key)
 
 struct ilka_hash_ret ilka_hash_del(struct ilka_hash *h, struct ilka_hash_key key)
 {
-    return (struct ilka_hash_ret) { -1, 0 };
+    return make_ret(ret_err, 0);
 }
 
 struct ilka_hash_ret ilka_hash_put(
         struct ilka_hash *h, struct ilka_hash_key key, ilka_off_t value)
 {
-    return (struct ilka_hash_ret) { -1, 0 };
+    return make_ret(ret_err, 0);
+}
+
+struct ilka_hash_ret ilka_hash_xchg(
+        struct ilka_hash *h, struct ilka_hash_key key, ilka_off_t value)
+{
+    return make_ret(ret_err, 0);
+}
+
+struct ilka_hash_ret ilka_hash_cmp_xchg(
+        struct ilka_hash *h,
+        struct ilka_hash_key key,
+        ilka_off_t *expected,
+        ilka_off_t value)
+{
+    return make_ret(ret_err, 0);
 }
