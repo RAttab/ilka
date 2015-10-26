@@ -70,7 +70,6 @@ static bool journal_init(
   fail_nodes:
     free(j->journal_file);
   fail_journal:
-    free(j);
     return false;
 }
 
