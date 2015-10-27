@@ -58,8 +58,8 @@ void ilka_vfail_errno(const char *file, int line, const char *fmt, ...)
         ilka_abort();                           \
     } while (0)
 
-#define ilka_todo()                                             \
-    do {                                                        \
-        ilka_fail(__FUNCTION__ ": not yet implemented");        \
-        ilka_abort();                                           \
+#define ilka_todo(msg)                          \
+    do {                                        \
+        ilka_fail("TODO: " msg);                \
+        ilka_abort();                           \
     } while (0)
