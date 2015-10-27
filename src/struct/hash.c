@@ -20,6 +20,7 @@
 // resistant. Will deal with that stuff later.
 static struct sipkey sipkey = {{ 0xc60243215c6ee9d1, 0xcd9cc80b04763259 }};
 
+static const size_t probe_window = 8;
 
 // -----------------------------------------------------------------------------
 // ret
@@ -39,6 +40,12 @@ inline static struct ilka_hash_ret make_ret(enum ret_code code, ilka_off_t old)
     return (struct ilka_hash_ret) { code, old };
 }
 
+struct table_ret
+{
+    enum ret_code code;
+    const struct hash_table *table;
+};
+
 
 // -----------------------------------------------------------------------------
 // key
@@ -46,6 +53,8 @@ inline static struct ilka_hash_ret make_ret(enum ret_code code, ilka_off_t old)
 
 static uint64_t key_hash(struct ilka_hash_key key)
 {
+    if (key.hash) return key.hash;
+
     struct siphash sip;
     sip24_init(&sip, &sipkey);
     sip24_update(&sip, key.data, key.len);
@@ -83,7 +92,7 @@ static struct ilka_hash_key key_from_off(struct ilka_region *r, ilka_off_t off)
     const size_t *len = ilka_read(r, off, sizeof(size_t));
     const void *data = ilka_read(r, off + sizeof(size_t), *len);
 
-    return (struct ilka_hash_key) { *len, data };
+    return (struct ilka_hash_key) { *len, data, 0 };
 }
 
 inline static bool key_check(
@@ -134,7 +143,9 @@ struct ilka_packed hash_bucket
 };
 
 static struct ilka_hash_ret bucket_get(
-        struct hash_bucket *b, struct ilka_region *r, struct ilka_hash_key key)
+        const struct hash_bucket *b,
+        struct ilka_region *r,
+        struct ilka_hash_key key)
 {
     ilka_off_t old_key = ilka_atomic_load(&b->key, morder_relaxed);
     switch (state_get(old_key)) {
@@ -220,7 +231,7 @@ static struct ilka_hash_ret bucket_put(
         switch (state_get(old_val)) {
         case state_tomb: return make_ret(ret_skip, 0);
         case state_move: return make_ret(ret_resize, 0);
-        case state_set: return make_ret(ret_skip, state_clear(old_val));
+        case state_set: return make_ret(ret_stop, state_clear(old_val));
         case state_nil: new_val = state_trans(value, state_set); break;
         }
 
@@ -359,15 +370,20 @@ static bool bucket_lock(struct hash_bucket *b)
 // table
 // -----------------------------------------------------------------------------
 
+static struct table_ret table_move_window(
+        const struct hash_table *src_table, struct ilka_region *r, size_t start);
+
 struct ilka_packed hash_table
 {
     size_t cap; // must be first.
     ilka_off_t next;
+    ilka_off_t buckets_off;
 
+    uint64_t padding[5];
     struct hash_bucket buckets[];
 };
 
-static size_t table_size(size_t cap)
+static size_t table_len(size_t cap)
 {
     return sizeof(struct hash_table) + cap * sizeof(struct hash_bucket);
 }
@@ -375,15 +391,105 @@ static size_t table_size(size_t cap)
 static const struct hash_table * table_read(struct ilka_region *r, ilka_off_t off)
 {
     const size_t *cap = ilka_read(r, off, sizeof(size_t));
-    return ilka_read(r, off, table_size(*cap));
+    return ilka_read(r, off, table_len(*cap));
 }
 
-static const struct hash_bucket * bucket_write(
-        struct ilka_region *r, ilka_off_t off, size_t i)
+static struct hash_bucket * table_write_bucket(
+        const struct hash_table *t, struct ilka_region *r, size_t i)
 {
     return ilka_write(r,
-            off + sizeof(struct hash_table) + i * sizeof(struct hash_bucket),
+            t->buckets_off + i * sizeof(struct hash_bucket),
             sizeof(struct hash_bucket));
+}
+
+static struct hash_bucket * table_write_window(
+        const struct hash_table *t, struct ilka_region *r, size_t start)
+{
+    return ilka_write(r,
+            t->buckets_off + start * sizeof(struct hash_bucket),
+            probe_window * sizeof(struct hash_bucket));
+}
+
+static struct ilka_hash_ret table_move_bucket(
+        struct ilka_region *r,
+        struct hash_bucket *src,
+        const struct hash_table *dst_table,
+        struct ilka_hash_key key,
+        ilka_off_t *key_off)
+{
+    size_t dst_start = key_hash(key) % dst_table->cap;
+    struct hash_bucket *dst = table_write_window(dst_table, r, dst_start);
+
+    ilka_off_t value = state_clear(src->val);
+    for (size_t j = 0; j < probe_window; ++j) {
+
+        struct ilka_hash_ret ret = bucket_put(dst, r, key, value, key_off);
+        if (ret.code == ret_skip) continue;
+        if (ret.code == ret_err) return ret;
+
+        if (ret.code == ret_ok || ret.code == ret_stop)
+            return make_ret(ret_ok, 0);
+
+        if (ret.code == ret_resize) {
+            struct table_ret ret = table_move_window(dst_table, r, dst_start);
+            if (ret.code == ret_err) return make_ret(ret.code, 0);
+
+            return table_move_bucket(r, src, ret.table, key, key_off);
+        }
+
+        ilka_unreachable();
+    }
+
+    ilka_todo("table_move_bucket needs to resize when full.");
+}
+
+static struct table_ret table_move_window(
+        const struct hash_table *src_table, struct ilka_region *r, size_t start)
+{
+    ilka_off_t next = ilka_atomic_load(&src_table->next, morder_relaxed);
+    if (!next) return (struct table_ret) { ret_ok, NULL };
+
+    const struct hash_table *dst_table = table_read(r, next);
+
+    struct hash_bucket *src = table_write_window(src_table, r, start);
+    for (size_t i = 0; i < probe_window; ++i) {
+        if (!bucket_lock(src)) continue;
+
+        ilka_off_t key_off = state_clear(src[i].key);
+        struct ilka_hash_key key = key_from_off(r, key_off);
+
+        struct ilka_hash_ret ret =
+            table_move_bucket(r, &src[i], dst_table, key, &key_off);
+        if (ret.code == ret_err) return (struct table_ret) { ret_err, NULL };
+
+        ilka_assert(ret.code == ret_ok, "unexpected ret code: %d", ret.code);
+        bucket_tomb(src);
+    }
+
+    return (struct table_ret) { ret_ok, dst_table };
+}
+
+static struct ilka_hash_ret table_get(
+        const struct hash_table *t,
+        struct ilka_region *r,
+        struct ilka_hash_key key)
+{
+    size_t start = key.hash % t->cap;
+    for (size_t i = 0; i < probe_window; ++i) {
+        const struct hash_bucket *b = &t->buckets[start + i % t->cap];
+
+        struct ilka_hash_ret ret = bucket_get(b, r, key);
+        if (ret.code == ret_skip) continue;
+        if (ret.code == ret_stop) break;
+        if (ret.code == ret_resize) break;
+        return ret;
+    }
+
+    struct table_ret ret = table_move_window(t, r, start);
+    if (ret.code == ret_err) return make_ret(ret_err, 0);
+    if (ret.table) return table_get(ret.table, r, key);
+
+    return make_ret(ret_stop, 0);
 }
 
 
@@ -437,7 +543,7 @@ bool ilka_hash_free(struct ilka_hash *h)
             key_free(h->r, state_clear(ht->buckets[i].key));
 
         ilka_off_t next = ht->next;
-        ilka_free(h->r, table, table_size(ht->cap));
+        ilka_free(h->r, table, table_len(ht->cap));
         table = next;
     }
 

@@ -18,6 +18,7 @@ struct ilka_hash_key
 {
     size_t len;
     const void *data;
+    uint64_t hash;
 };
 
 struct ilka_hash * ilka_hash_alloc(struct ilka_region *r);
