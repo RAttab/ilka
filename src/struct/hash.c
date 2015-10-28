@@ -84,7 +84,7 @@ static ilka_off_t key_alloc(struct ilka_region *r, struct ilka_hash_key key)
 static void key_free(struct ilka_region *r, ilka_off_t off)
 {
     const size_t *len = ilka_read(r, off, sizeof(size_t));
-    ilka_free(r, off, sizeof(size_t) + *len);
+    ilka_defer_free(r, off, sizeof(size_t) + *len);
 }
 
 static struct ilka_hash_key key_from_off(struct ilka_region *r, ilka_off_t off)
@@ -169,7 +169,7 @@ static struct ilka_hash_ret bucket_get(
     ilka_unreachable();
 }
 
-static void bucket_tomb_part(ilka_off_t *v, enum morder mo)
+static void bucket_tomb_key(ilka_off_t *v, struct ilka_region *r, enum morder mo)
 {
     ilka_off_t new;
     ilka_off_t old = ilka_atomic_load(v, morder_relaxed);
@@ -180,13 +180,22 @@ static void bucket_tomb_part(ilka_off_t *v, enum morder mo)
         }
         new = state_trans(old, state_tomb);
     } while (!ilka_atomic_cmp_xchg(v, &old, new, mo));
+
+    if (state_get(old) != state_move)
+        key_free(r, state_clear(old));
 }
 
-static void bucket_tomb(struct hash_bucket *b)
+static void bucket_tomb_val(ilka_off_t *v, enum morder mo)
 {
-    // morder: we commit both writes at the same time when tombing the value.
-    bucket_tomb_part(&b->key, morder_relaxed);
-    bucket_tomb_part(&b->val, morder_release);
+    ilka_off_t new;
+    ilka_off_t old = ilka_atomic_load(v, morder_relaxed);
+    do {
+        if (state_get(old) == state_tomb) {
+            ilka_atomic_fence(mo);
+            return;
+        }
+        new = state_trans(old, state_tomb);
+    } while (!ilka_atomic_cmp_xchg(v, &old, new, mo));
 }
 
 static struct ilka_hash_ret bucket_put(
@@ -317,12 +326,12 @@ static struct ilka_hash_ret bucket_del(
     } while (!ilka_atomic_cmp_xchg(&b->val, &old_val, new_val, morder_relaxed));
 
     // morder_release: commit both the key and val writes.
-    bucket_tomb_part(&b->key, morder_release);
+    bucket_tomb_key(&b->key, r, morder_release);
 
     return make_ret(ret_ok, state_clear(old_val));
 }
 
-static bool bucket_lock(struct hash_bucket *b)
+static bool bucket_lock(struct hash_bucket *b, struct ilka_region *r)
 {
     ilka_off_t new_key;
     ilka_off_t old_key = ilka_atomic_load(&b->key, morder_relaxed);
@@ -356,7 +365,9 @@ static bool bucket_lock(struct hash_bucket *b)
 
     enum state val_state = state_get(new_key);
     if (key_state == state_move && val_state == state_tomb) {
-        bucket_tomb(b);
+        // morder_relaxed: this is not a linearlization point and mostly just
+        // bookeeping so no ordering guarantees are required.
+        bucket_tomb_key(&b->key, r, morder_relaxed);
         return false;
     }
 
@@ -453,7 +464,7 @@ static struct table_ret table_move_window(
 
     struct hash_bucket *src = table_write_window(src_table, r, start);
     for (size_t i = 0; i < probe_window; ++i) {
-        if (!bucket_lock(src)) continue;
+        if (!bucket_lock(src, r)) continue;
 
         ilka_off_t key_off = state_clear(src[i].key);
         struct ilka_hash_key key = key_from_off(r, key_off);
@@ -463,7 +474,11 @@ static struct table_ret table_move_window(
         if (ret.code == ret_err) return (struct table_ret) { ret_err, NULL };
 
         ilka_assert(ret.code == ret_ok, "unexpected ret code: %d", ret.code);
-        bucket_tomb(src);
+
+        // morder_relaxed: these are not linearlization point and just purely
+        // bookeeping so no ordering requirements applies.
+        bucket_tomb_key(&src->key, r, morder_relaxed);
+        bucket_tomb_val(&src->val, morder_relaxed);
     }
 
     return (struct table_ret) { ret_ok, dst_table };
@@ -577,21 +592,27 @@ ilka_off_t ilka_hash_off(struct ilka_hash *h)
 
 size_t ilka_hash_cap(struct ilka_hash *h)
 {
+    (void) h;
     return 0;
 }
 
 bool ilka_hash_reserve(struct ilka_hash *h, size_t cap)
 {
+    (void) h;
+    (void) cap;
     return false;
 }
 
 size_t ilka_hash_len(struct ilka_hash *h)
 {
+    (void) h;
     return 0;
 }
 
 bool ilka_hash_resize(struct ilka_hash *h, size_t len)
 {
+    (void) h;
+    (void) len;
     return false;
 }
 
@@ -602,11 +623,16 @@ bool ilka_hash_resize(struct ilka_hash *h, size_t len)
 
 int ilka_hash_has(struct ilka_hash *h, struct ilka_hash_key key)
 {
+    (void) h;
+    (void) key;
     return -1;
 }
 
 ilka_off_t ilka_hash_get(struct ilka_hash *h, struct ilka_hash_key key)
 {
+    (void) h;
+    (void) key;
+
     return 0;
 }
 
@@ -617,18 +643,26 @@ ilka_off_t ilka_hash_get(struct ilka_hash *h, struct ilka_hash_key key)
 
 struct ilka_hash_ret ilka_hash_del(struct ilka_hash *h, struct ilka_hash_key key)
 {
+    (void) h;
+    (void) key;
     return make_ret(ret_err, 0);
 }
 
 struct ilka_hash_ret ilka_hash_put(
         struct ilka_hash *h, struct ilka_hash_key key, ilka_off_t value)
 {
+    (void) h;
+    (void) key;
+    (void) value;
     return make_ret(ret_err, 0);
 }
 
 struct ilka_hash_ret ilka_hash_xchg(
         struct ilka_hash *h, struct ilka_hash_key key, ilka_off_t value)
 {
+    (void) h;
+    (void) key;
+    (void) value;
     return make_ret(ret_err, 0);
 }
 
@@ -638,5 +672,23 @@ struct ilka_hash_ret ilka_hash_cmp_xchg(
         ilka_off_t expected,
         ilka_off_t value)
 {
+    (void) h;
+    (void) key;
+    (void) expected;
+    (void) value;
     return make_ret(ret_err, 0);
+}
+
+
+// -----------------------------------------------------------------------------
+// compiler shutter-upper.
+// -----------------------------------------------------------------------------
+
+void _shutup()
+{
+    (void) bucket_get(0, 0, (struct ilka_hash_key) { 0 });
+    (void) bucket_xchg(0, 0, (struct ilka_hash_key) { 0 }, 0, 0);
+    (void) bucket_del(0, 0, (struct ilka_hash_key) { 0 });
+    (void) table_write_bucket(0, 0, 0);
+    (void) table_get(0, 0, (struct ilka_hash_key) { 0 });
 }

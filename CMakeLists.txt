@@ -78,7 +78,7 @@ add_library(ilka SHARED
     src/utils/utils.c
     src/region/region.c
     src/struct/vec.c
-#    src/struct/hash.c
+    src/struct/hash.c
     )
 
 
