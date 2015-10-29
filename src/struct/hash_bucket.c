@@ -81,8 +81,7 @@ static struct ilka_hash_ret bucket_put(
         struct hash_bucket *b,
         struct ilka_region *r,
         struct hash_key *key,
-        ilka_off_t value,
-        ilka_off_t *key_off)
+        ilka_off_t value)
 {
     ilka_off_t new_key;
     ilka_off_t old_key = ilka_atomic_load(&b->key, morder_relaxed);
@@ -97,15 +96,15 @@ static struct ilka_hash_ret bucket_put(
             goto break_key;
 
         case state_nil:
-            if (!*key_off) {
-                *key_off = key_alloc(r, key);
+            if (!key->off) {
+                key_alloc(r, key);
 
                 // morder_release: make sure the key is committed before it's
                 // published.
                 ilka_atomic_fence(morder_release);
             }
-            if (!*key_off) return make_ret(ret_err, 0);
-            new_key = state_trans(*key_off, state_set);
+            if (!key->off) return make_ret(ret_err, 0);
+            new_key = state_trans(key->off, state_set);
             break;
         }
 
@@ -254,5 +253,3 @@ static bool bucket_lock(struct hash_bucket *b, struct ilka_region *r)
             "unmatched state for key and val: %d != %d", key_state, val_state);
     return val_state == state_move;
 }
-
-

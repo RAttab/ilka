@@ -4,6 +4,7 @@
 */
 
 #include "hash.h"
+#include "list.h"
 
 #include "utils/utils.h"
 #include "siphash.h"
@@ -21,6 +22,8 @@
 static struct sipkey sipkey = {{ 0xc60243215c6ee9d1, 0xcd9cc80b04763259 }};
 
 static const size_t probe_window = 8;
+static const size_t grow_threshold = 4;
+
 
 // -----------------------------------------------------------------------------
 // ret
@@ -45,6 +48,7 @@ struct table_ret
     enum ret_code code;
     const struct hash_table *table;
 };
+
 
 // -----------------------------------------------------------------------------
 // state
@@ -90,14 +94,23 @@ struct ilka_hash
 struct ilka_packed hash_meta
 {
     size_t len;
-    ilka_off_t table;
+    struct ilka_list_node tables;
 };
+
+static struct ilka_list hash_list(struct ilka_hash *h)
+{
+    return ilka_list_open(
+            h->r,
+            h->meta + offsetof(struct hash_meta, tables),
+            offsetof(struct hash_table, next));
+}
 
 struct ilka_hash * ilka_hash_alloc(struct ilka_region *r)
 {
     struct ilka_hash *h = malloc(sizeof(struct ilka_hash));
     if (!h) {
-        ilka_fail_errno("out-of-memory for hash struct: %lu", sizeof(struct ilka_hash));
+        ilka_fail_errno("out-of-memory for hash struct: %lu",
+                sizeof(struct ilka_hash));
         return NULL;
     }
 
@@ -117,16 +130,16 @@ struct ilka_hash * ilka_hash_alloc(struct ilka_region *r)
 
 bool ilka_hash_free(struct ilka_hash *h)
 {
-    const struct hash_meta *meta = ilka_read(h->r, h->meta, sizeof(struct hash_meta));
+    struct ilka_list list = hash_list(h);
 
-    ilka_off_t table = meta->table;
+    ilka_off_t table = ilka_list_head(&list);
     while (table) {
         const struct hash_table *ht = table_read(h->r, table);
 
         for (size_t i = 0; i < ht->cap; ++i)
             key_free(h->r, state_clear(ht->buckets[i].key));
 
-        ilka_off_t next = ht->next;
+        ilka_off_t next = ilka_list_next(&list, &ht->next);
         ilka_free(h->r, table, table_len(ht->cap));
         table = next;
     }

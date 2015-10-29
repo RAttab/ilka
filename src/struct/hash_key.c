@@ -14,6 +14,7 @@ struct hash_key
     const void *data;
 
     uint64_t hash;
+    ilka_off_t off;
 };
 
 static uint64_t _key_hash(const void *data, size_t len)
@@ -32,7 +33,7 @@ static uint64_t key_hash(struct hash_key *key)
 
 static struct hash_key make_key(const void *data, size_t len)
 {
-    return (struct hash_key) { len, data, _key_hash(data, len) };
+    return (struct hash_key) { len, data, _key_hash(data, len), 0 };
 }
 
 static bool key_equals(struct hash_key *lhs, struct hash_key *rhs)
@@ -43,16 +44,18 @@ static bool key_equals(struct hash_key *lhs, struct hash_key *rhs)
 
 static ilka_off_t key_alloc(struct ilka_region *r, struct hash_key *key)
 {
+    if (key->off) return key->off;
+
     size_t n = sizeof(size_t) + key->len;
 
-    ilka_off_t off = ilka_alloc(r, n);
-    if (!off) return off;
+    key->off = ilka_alloc(r, n);
+    if (!key->off) return key->off;
 
-    size_t *p = ilka_write(r, off, n);
+    size_t *p = ilka_write(r, key->off, n);
     *p = key->len;
     memcpy(p + 1, key->data, key->len);
 
-    return off;
+    return key->off;
 }
 
 static void key_free(struct ilka_region *r, ilka_off_t off)
@@ -66,7 +69,7 @@ static struct hash_key key_from_off(struct ilka_region *r, ilka_off_t off)
     const size_t *len = ilka_read(r, off, sizeof(size_t));
     const void *data = ilka_read(r, off + sizeof(size_t), *len);
 
-    return (struct hash_key) { *len, data, 0 };
+    return (struct hash_key) { *len, data, 0, off };
 }
 
 static bool key_check(
@@ -75,6 +78,3 @@ static bool key_check(
     struct hash_key lhs = key_from_off(r, off);
     return key_equals(&lhs, rhs);
 }
-
-
-
