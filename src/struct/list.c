@@ -27,49 +27,66 @@ struct ilka_list
     size_t off;
 };
 
+
+// -----------------------------------------------------------------------------
+// basics
+// -----------------------------------------------------------------------------
+
 struct ilka_list * ilka_list_alloc(
-        struct ilka_region *r, ilka_off_t head_off, size_t off)
+        struct ilka_region *region, ilka_off_t head_off, size_t off)
 {
-    struct ilka_list *l = ilka_list_open(r, head_off, off);
+    struct ilka_list *list = ilka_list_open(region, head_off, off);
 
     struct ilka_list_node *head =
-        ilka_write(r, head_off, sizeof(struct ilka_list_node));
+        ilka_write(region, head_off, sizeof(struct ilka_list_node));
     head->next = 0;
 
-    return l;
+    return list;
 }
 
 struct ilka_list * ilka_list_open(
-        struct ilka_region *r, ilka_off_t head, size_t off)
+        struct ilka_region *region, ilka_off_t head, size_t off)
 {
-    struct ilka_list *l = calloc(1, sizeof(struct ilka_list));
-    *l = (struct ilka_list) { r, head, off };
-    return l;
+    struct ilka_list *list = calloc(1, sizeof(struct ilka_list));
+    *list = (struct ilka_list) { region, head, off };
+    return list;
 }
 
-void ilka_list_close(struct ilka_list *l)
+void ilka_list_close(struct ilka_list *list)
 {
-    free(l);
+    free(list);
 }
 
-static const struct ilka_list_node * list_read(struct ilka_list *l, ilka_off_t off)
+
+// -----------------------------------------------------------------------------
+// utils
+// -----------------------------------------------------------------------------
+
+static const struct ilka_list_node * list_read(
+        struct ilka_list *list, ilka_off_t off)
 {
-    return ilka_read(l->region, off + l->off, sizeof(struct ilka_list_node));
+    return ilka_read(list->region, off + list->off, sizeof(struct ilka_list_node));
 }
 
-ilka_off_t ilka_list_head(struct ilka_list *l)
+
+// -----------------------------------------------------------------------------
+// read
+// -----------------------------------------------------------------------------
+
+ilka_off_t ilka_list_head(struct ilka_list *list)
 {
     const struct ilka_list_node *head =
-        ilka_read(l->region, l->head, sizeof(struct ilka_list_node));
-    return ilka_list_next(l, head);
+        ilka_read(list->region, list->head, sizeof(struct ilka_list_node));
+    return ilka_list_next(list, head);
 }
 
-ilka_off_t ilka_list_next(struct ilka_list *l, const struct ilka_list_node *node)
+ilka_off_t ilka_list_next(
+        struct ilka_list *list, const struct ilka_list_node *node)
 {
     ilka_off_t off = ilka_atomic_load(&node->next, morder_relaxed);
 
     while (off) {
-        node = list_read(l, off);
+        node = list_read(list, off);
 
         ilka_off_t next = ilka_atomic_load(&node->next, morder_relaxed);
         if (!(next & list_mark)) return off;
@@ -80,15 +97,20 @@ ilka_off_t ilka_list_next(struct ilka_list *l, const struct ilka_list_node *node
     return 0;
 }
 
-bool ilka_list_set(struct ilka_list *l, struct ilka_list_node *node, ilka_off_t next)
+
+// -----------------------------------------------------------------------------
+// write
+// -----------------------------------------------------------------------------
+
+bool ilka_list_set(struct ilka_list *list, struct ilka_list_node *node, ilka_off_t next)
 {
-    (void) l;
+    (void) list;
     ilka_assert(!(next & list_mark), "invalid offset: %p", (void *) next);
 
     return ilka_atomic_cmp_xchg(&node->next, 0, next, morder_release);
 }
 
-bool ilka_list_del(struct ilka_list *l, struct ilka_list_node *node)
+bool ilka_list_del(struct ilka_list *list, struct ilka_list_node *node)
 {
     ilka_off_t new_next;
     ilka_off_t old_next = node->next;
@@ -102,25 +124,25 @@ bool ilka_list_del(struct ilka_list *l, struct ilka_list_node *node)
 
   restart: (void) 0;
 
-    ilka_off_t prev_off = l->head;
+    ilka_off_t prev_off = list->head;
     const struct ilka_list_node *prev =
-        ilka_read(l->region, prev_off, sizeof(struct ilka_list_node));
+        ilka_read(list->region, prev_off, sizeof(struct ilka_list_node));
 
     while (true) {
         ilka_off_t cur_off = ilka_atomic_load(&prev->next, morder_relaxed);
         if (!cur_off) return false;
 
-        const struct ilka_list_node *cur = list_read(l, cur_off);
+        const struct ilka_list_node *cur = list_read(list, cur_off);
 
         ilka_off_t next = ilka_atomic_load(&cur->next, morder_relaxed);
         if (!(next & list_mark)) {
-            prev_off = cur_off + l->off;
+            prev_off = cur_off + list->off;
             prev = cur;
             continue;
         }
 
         struct ilka_list_node *wprev =
-            ilka_write(l->region, prev_off, sizeof(struct ilka_list_node));
+            ilka_write(list->region, prev_off, sizeof(struct ilka_list_node));
 
         ilka_off_t clean_next = next & ~list_mark;
 
@@ -149,9 +171,9 @@ bool ilka_list_del(struct ilka_list *l, struct ilka_list_node *node)
     }
 }
 
-ilka_off_t ilka_list_clear(struct ilka_list *l)
+ilka_off_t ilka_list_clear(struct ilka_list *list)
 {
     struct ilka_list_node *head =
-        ilka_write(l->region, l->head, sizeof(struct ilka_list_node));
+        ilka_write(list->region, list->head, sizeof(struct ilka_list_node));
     return ilka_atomic_xchg(&head->next, 0, morder_relaxed);
 }
