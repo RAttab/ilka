@@ -73,14 +73,21 @@ static inline ilka_off_t state_trans(ilka_off_t v, enum state s)
 
 
 // -----------------------------------------------------------------------------
-// implementation
+// struct
 // -----------------------------------------------------------------------------
 
 struct ilka_hash
 {
     struct ilka_region *region;
     ilka_off_t meta;
+
+    struct ilka_list tables;
 };
+
+
+// -----------------------------------------------------------------------------
+// implementation
+// -----------------------------------------------------------------------------
 
 #include "hash_key.c"
 #include "hash_bucket.c"
@@ -99,7 +106,7 @@ struct ilka_packed hash_meta
 
 static struct ilka_list hash_list(struct ilka_hash *ht)
 {
-    return ilka_list_open(
+    return ilka_list_init(
             ht->region,
             ht->meta + offsetof(struct hash_meta, tables),
             offsetof(struct hash_table, next));
@@ -120,6 +127,7 @@ struct ilka_hash * ilka_hash_alloc(struct ilka_region *region)
 
     struct hash_meta *meta = ilka_write(region, ht->meta, sizeof(struct hash_meta));
     memset(meta, 0, sizeof(struct hash_meta));
+    ht->tables = hash_list(ht);
 
     return ht;
 
@@ -130,16 +138,14 @@ struct ilka_hash * ilka_hash_alloc(struct ilka_region *region)
 
 bool ilka_hash_free(struct ilka_hash *ht)
 {
-    struct ilka_list list = hash_list(ht);
-
-    ilka_off_t table_off = ilka_list_head(&list);
+    ilka_off_t table_off = ilka_list_head(&ht->tables);
     while (table_off) {
         const struct hash_table *table = table_read(ht, table_off);
 
         for (size_t i = 0; i < table->cap; ++i)
             key_free(ht, state_clear(table->buckets[i].key));
 
-        ilka_off_t next = ilka_list_next(&list, &table->next);
+        ilka_off_t next = ilka_list_next(&ht->tables, &table->next);
         ilka_free(ht->region, table_off, table_len(table->cap));
         table_off = next;
     }
@@ -152,7 +158,8 @@ bool ilka_hash_free(struct ilka_hash *ht)
 struct ilka_hash * ilka_hash_open(struct ilka_region *region, ilka_off_t off)
 {
     struct ilka_hash *ht = malloc(sizeof(struct ilka_hash));
-    *ht = (struct ilka_hash) { region, off };
+    *ht = (struct ilka_hash) { region, off, hash_list(ht) };
+
     return ht;
 }
 

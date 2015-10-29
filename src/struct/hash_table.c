@@ -25,9 +25,8 @@ struct ilka_packed hash_table
 
     ilka_off_t table_off;
     ilka_off_t buckets_off;
-    ilka_off_t list_head;
 
-    uint64_t padding[3];
+    uint64_t padding[4];
     struct hash_bucket buckets[];
 };
 
@@ -41,8 +40,7 @@ static size_t table_len(size_t cap)
     return sizeof(struct hash_table) + cap * sizeof(struct hash_bucket);
 }
 
-static ilka_off_t table_alloc(
-        struct ilka_hash *ht, size_t cap, ilka_off_t list_head)
+static ilka_off_t table_alloc(struct ilka_hash *ht, size_t cap)
 {
     size_t len = table_len(cap);
     ilka_off_t off = ilka_alloc(ht->region, len);
@@ -52,17 +50,8 @@ static ilka_off_t table_alloc(
     table->cap = cap;
     table->table_off = off;
     table->buckets_off = off + offsetof(struct hash_table, buckets);
-    table->list_head = list_head;
 
     return off;
-}
-
-static struct ilka_list table_list(
-        struct ilka_hash *ht, const struct hash_table *table)
-{
-    return ilka_list_open(
-            ht->region, table->list_head,
-            offsetof(struct hash_table, next));
 }
 
 
@@ -109,9 +98,7 @@ static struct table_ret table_move(
         size_t start,
         size_t len)
 {
-    struct ilka_list list = table_list(ht, src_table);
-
-    ilka_off_t next = ilka_list_next(&list, &src_table->next);
+    ilka_off_t next = ilka_list_next(&ht->tables, &src_table->next);
     if (!next) return (struct table_ret) { ret_ok, NULL };
 
     const struct hash_table *dst_table = table_read(ht, next);
@@ -165,12 +152,10 @@ static struct table_ret table_resize(
         size_t start)
 {
     size_t cap = table_resize_cap(table, start);
-    ilka_off_t next = table_alloc(ht, cap, table->list_head);
+    ilka_off_t next = table_alloc(ht, cap);
     struct hash_table *cur = table_write(ht, table);
 
-    struct ilka_list list = table_list(ht, table);
-
-    if (!ilka_list_set(&list, &cur->next, next)) {
+    if (!ilka_list_set(&ht->tables, &cur->next, next)) {
         ilka_free(ht->region, next, table_len(cap));
         return table_move(ht, table, start, probe_window);
     }
@@ -181,7 +166,7 @@ static struct table_ret table_resize(
         return ret;
     }
 
-    if (ilka_list_del(&list, &cur->next))
+    if (ilka_list_del(&ht->tables, &cur->next))
         ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
 
     return (struct table_ret) { ret_ok, table_read(ht, next) };
