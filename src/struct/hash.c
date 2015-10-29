@@ -76,6 +76,12 @@ static inline ilka_off_t state_trans(ilka_off_t v, enum state s)
 // implementation
 // -----------------------------------------------------------------------------
 
+struct ilka_hash
+{
+    struct ilka_region *region;
+    ilka_off_t meta;
+};
+
 #include "hash_key.c"
 #include "hash_bucket.c"
 #include "hash_table.c"
@@ -85,86 +91,80 @@ static inline ilka_off_t state_trans(ilka_off_t v, enum state s)
 // basics
 // -----------------------------------------------------------------------------
 
-struct ilka_hash
-{
-    struct ilka_region *r;
-    ilka_off_t meta;
-};
-
 struct ilka_packed hash_meta
 {
     size_t len;
     struct ilka_list_node tables;
 };
 
-static struct ilka_list hash_list(struct ilka_hash *h)
+static struct ilka_list hash_list(struct ilka_hash *ht)
 {
     return ilka_list_open(
-            h->r,
-            h->meta + offsetof(struct hash_meta, tables),
+            ht->region,
+            ht->meta + offsetof(struct hash_meta, tables),
             offsetof(struct hash_table, next));
 }
 
-struct ilka_hash * ilka_hash_alloc(struct ilka_region *r)
+struct ilka_hash * ilka_hash_alloc(struct ilka_region *region)
 {
-    struct ilka_hash *h = malloc(sizeof(struct ilka_hash));
-    if (!h) {
+    struct ilka_hash *ht = malloc(sizeof(struct ilka_hash));
+    if (!ht) {
         ilka_fail_errno("out-of-memory for hash struct: %lu",
                 sizeof(struct ilka_hash));
         return NULL;
     }
 
-    h->r = r;
-    h->meta = ilka_alloc(r, sizeof(struct hash_meta));
-    if (!h->meta) goto fail_meta;
+    ht->region = region;
+    ht->meta = ilka_alloc(region, sizeof(struct hash_meta));
+    if (!ht->meta) goto fail_meta;
 
-    struct hash_meta *meta = ilka_write(r, h->meta, sizeof(struct hash_meta));
+    struct hash_meta *meta = ilka_write(region, ht->meta, sizeof(struct hash_meta));
     memset(meta, 0, sizeof(struct hash_meta));
 
-    return h;
+    return ht;
 
   fail_meta:
-    free(h);
+    free(ht);
     return NULL;
 }
 
-bool ilka_hash_free(struct ilka_hash *h)
+bool ilka_hash_free(struct ilka_hash *ht)
 {
-    struct ilka_list list = hash_list(h);
+    struct ilka_list list = hash_list(ht);
 
-    ilka_off_t table = ilka_list_head(&list);
-    while (table) {
-        const struct hash_table *ht = table_read(h->r, table);
+    ilka_off_t table_off = ilka_list_head(&list);
+    while (table_off) {
+        const struct hash_table *table = table_read(ht, table_off);
 
-        for (size_t i = 0; i < ht->cap; ++i)
-            key_free(h->r, state_clear(ht->buckets[i].key));
+        for (size_t i = 0; i < table->cap; ++i)
+            key_free(ht, state_clear(table->buckets[i].key));
 
-        ilka_off_t next = ilka_list_next(&list, &ht->next);
-        ilka_free(h->r, table, table_len(ht->cap));
-        table = next;
+        ilka_off_t next = ilka_list_next(&list, &table->next);
+        ilka_free(ht->region, table_off, table_len(table->cap));
+        table_off = next;
     }
 
-    ilka_free(h->r, h->meta, sizeof(struct hash_meta));
+    ilka_free(ht->region, ht->meta, sizeof(struct hash_meta));
 
-    return ilka_hash_close(h);
+    return ilka_hash_close(ht);
 }
 
-struct ilka_hash * ilka_hash_open(struct ilka_region *r, ilka_off_t off)
+struct ilka_hash * ilka_hash_open(struct ilka_region *region, ilka_off_t off)
 {
-    struct ilka_hash *h = malloc(sizeof(struct ilka_hash));
-    *h = (struct ilka_hash) { r, off };
-    return h;
+    struct ilka_hash *ht = malloc(sizeof(struct ilka_hash));
+    *ht = (struct ilka_hash) { region, off };
+    return ht;
 }
 
-bool ilka_hash_close(struct ilka_hash *h)
+bool ilka_hash_close(struct ilka_hash *ht)
 {
-    free(h);
+    free(ht);
     return true;
 }
 
-ilka_off_t ilka_hash_off(struct ilka_hash *h)
+ilka_off_t ilka_hash_off(struct ilka_hash *ht)
 {
-    return h->meta;
+    return ht->meta;
 }
 
 
@@ -172,28 +172,28 @@ ilka_off_t ilka_hash_off(struct ilka_hash *h)
 // sizing
 // -----------------------------------------------------------------------------
 
-size_t ilka_hash_cap(struct ilka_hash *h)
+size_t ilka_hash_cap(struct ilka_hash *ht)
 {
-    (void) h;
+    (void) ht;
     return 0;
 }
 
-bool ilka_hash_reserve(struct ilka_hash *h, size_t cap)
+bool ilka_hash_reserve(struct ilka_hash *ht, size_t cap)
 {
-    (void) h;
+    (void) ht;
     (void) cap;
     return false;
 }
 
-size_t ilka_hash_len(struct ilka_hash *h)
+size_t ilka_hash_len(struct ilka_hash *ht)
 {
-    (void) h;
+    (void) ht;
     return 0;
 }
 
-bool ilka_hash_resize(struct ilka_hash *h, size_t len)
+bool ilka_hash_resize(struct ilka_hash *ht, size_t len)
 {
-    (void) h;
+    (void) ht;
     (void) len;
     return false;
 }
@@ -203,17 +203,17 @@ bool ilka_hash_resize(struct ilka_hash *h, size_t len)
 // read
 // -----------------------------------------------------------------------------
 
-int ilka_hash_has(struct ilka_hash *h, const void *key, size_t key_len)
+int ilka_hash_has(struct ilka_hash *ht, const void *key, size_t key_len)
 {
-    (void) h;
+    (void) ht;
     (void) key;
     (void) key_len;
     return -1;
 }
 
-ilka_off_t ilka_hash_get(struct ilka_hash *h, const void *key, size_t key_len)
+ilka_off_t ilka_hash_get(struct ilka_hash *ht, const void *key, size_t key_len)
 {
-    (void) h;
+    (void) ht;
     (void) key;
     (void) key_len;
     return 0;
@@ -225,18 +225,18 @@ ilka_off_t ilka_hash_get(struct ilka_hash *h, const void *key, size_t key_len)
 // -----------------------------------------------------------------------------
 
 struct ilka_hash_ret ilka_hash_del(
-        struct ilka_hash *h, const void *key, size_t key_len)
+        struct ilka_hash *ht, const void *key, size_t key_len)
 {
-    (void) h;
+    (void) ht;
     (void) key;
     (void) key_len;
     return make_ret(ret_err, 0);
 }
 
 struct ilka_hash_ret ilka_hash_put(
-        struct ilka_hash *h, const void *key, size_t key_len, ilka_off_t value)
+        struct ilka_hash *ht, const void *key, size_t key_len, ilka_off_t value)
 {
-    (void) h;
+    (void) ht;
     (void) key;
     (void) key_len;
     (void) value;
@@ -244,9 +244,9 @@ struct ilka_hash_ret ilka_hash_put(
 }
 
 struct ilka_hash_ret ilka_hash_xchg(
-        struct ilka_hash *h, const void *key, size_t key_len, ilka_off_t value)
+        struct ilka_hash *ht, const void *key, size_t key_len, ilka_off_t value)
 {
-    (void) h;
+    (void) ht;
     (void) key;
     (void) key_len;
     (void) value;
@@ -254,12 +254,12 @@ struct ilka_hash_ret ilka_hash_xchg(
 }
 
 struct ilka_hash_ret ilka_hash_cmp_xchg(
-        struct ilka_hash *h,
+        struct ilka_hash *ht,
         const void *key, size_t key_len,
         ilka_off_t expected,
         ilka_off_t value)
 {
-    (void) h;
+    (void) ht;
     (void) key;
     (void) key_len;
     (void) expected;
