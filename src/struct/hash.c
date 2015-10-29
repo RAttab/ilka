@@ -81,7 +81,7 @@ struct ilka_hash
     struct ilka_region *region;
     ilka_off_t meta;
 
-    struct ilka_list tables;
+    struct ilka_list *tables;
 };
 
 
@@ -101,16 +101,8 @@ struct ilka_hash
 struct ilka_packed hash_meta
 {
     size_t len;
-    struct ilka_list_node tables;
+    struct ilka_list_node *tables;
 };
-
-static struct ilka_list hash_list(struct ilka_hash *ht)
-{
-    return ilka_list_init(
-            ht->region,
-            ht->meta + offsetof(struct hash_meta, tables),
-            offsetof(struct hash_table, next));
-}
 
 struct ilka_hash * ilka_hash_alloc(struct ilka_region *region)
 {
@@ -127,25 +119,31 @@ struct ilka_hash * ilka_hash_alloc(struct ilka_region *region)
 
     struct hash_meta *meta = ilka_write(region, ht->meta, sizeof(struct hash_meta));
     memset(meta, 0, sizeof(struct hash_meta));
-    ht->tables = hash_list(ht);
+    ht->tables = ilka_list_alloc(
+            ht->region,
+            ht->meta + offsetof(struct hash_meta, tables),
+            offsetof(struct hash_table, next));
+    if (!ht->tables) goto fail_tables;
 
     return ht;
 
-  fail_meta:
+    ilka_list_close(ht->tables);
+  fail_tables:
     free(ht);
+  fail_meta:
     return NULL;
 }
 
 bool ilka_hash_free(struct ilka_hash *ht)
 {
-    ilka_off_t table_off = ilka_list_head(&ht->tables);
+    ilka_off_t table_off = ilka_list_head(ht->tables);
     while (table_off) {
         const struct hash_table *table = table_read(ht, table_off);
 
         for (size_t i = 0; i < table->cap; ++i)
             key_free(ht, state_clear(table->buckets[i].key));
 
-        ilka_off_t next = ilka_list_next(&ht->tables, &table->next);
+        ilka_off_t next = ilka_list_next(ht->tables, &table->next);
         ilka_free(ht->region, table_off, table_len(table->cap));
         table_off = next;
     }
@@ -158,13 +156,29 @@ bool ilka_hash_free(struct ilka_hash *ht)
 struct ilka_hash * ilka_hash_open(struct ilka_region *region, ilka_off_t off)
 {
     struct ilka_hash *ht = malloc(sizeof(struct ilka_hash));
-    *ht = (struct ilka_hash) { region, off, hash_list(ht) };
+    if (!ht) goto fail_malloc;
+
+    ht->region = region;
+    ht->meta = off;
+    ht->tables = ilka_list_open(
+            ht->region,
+            ht->meta + offsetof(struct hash_meta, tables),
+            offsetof(struct hash_table, next));
+    if (!ht->tables) goto fail_tables;
+
 
     return ht;
+
+    ilka_list_close(ht->tables);
+  fail_tables:
+    free(ht);
+  fail_malloc:
+    return NULL;
 }
 
 bool ilka_hash_close(struct ilka_hash *ht)
 {
+    ilka_list_close(ht->tables);
     free(ht);
     return true;
 }

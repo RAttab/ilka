@@ -98,7 +98,7 @@ static struct table_ret table_move(
         size_t start,
         size_t len)
 {
-    ilka_off_t next = ilka_list_next(&ht->tables, &src_table->next);
+    ilka_off_t next = ilka_list_next(ht->tables, &src_table->next);
     if (!next) return (struct table_ret) { ret_ok, NULL };
 
     const struct hash_table *dst_table = table_read(ht, next);
@@ -155,7 +155,7 @@ static struct table_ret table_resize(
     ilka_off_t next = table_alloc(ht, cap);
     struct hash_table *cur = table_write(ht, table);
 
-    if (!ilka_list_set(&ht->tables, &cur->next, next)) {
+    if (!ilka_list_set(ht->tables, &cur->next, next)) {
         ilka_free(ht->region, next, table_len(cap));
         return table_move(ht, table, start, probe_window);
     }
@@ -166,7 +166,7 @@ static struct table_ret table_resize(
         return ret;
     }
 
-    if (ilka_list_del(&ht->tables, &cur->next))
+    if (ilka_list_del(ht->tables, &cur->next))
         ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
 
     return (struct table_ret) { ret_ok, table_read(ht, next) };

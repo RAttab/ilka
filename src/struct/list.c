@@ -6,6 +6,8 @@
 #include "list.h"
 
 #include "utils/utils.h"
+#include <stdlib.h>
+
 
 // -----------------------------------------------------------------------------
 // config
@@ -18,22 +20,36 @@ static const ilka_off_t list_mark = 1UL << 63;
 // list
 // -----------------------------------------------------------------------------
 
-struct ilka_list ilka_list_open(
-        struct ilka_region *r, ilka_off_t head, size_t off)
+struct ilka_list
 {
-    return (struct ilka_list) { r, head, off };
-}
+    struct ilka_region *region;
+    ilka_off_t head;
+    size_t off;
+};
 
-struct ilka_list ilka_list_init(
+struct ilka_list * ilka_list_alloc(
         struct ilka_region *r, ilka_off_t head_off, size_t off)
 {
-    struct ilka_list l = ilka_list_open(r, head_off, off);
+    struct ilka_list *l = ilka_list_open(r, head_off, off);
 
     struct ilka_list_node *head =
         ilka_write(r, head_off, sizeof(struct ilka_list_node));
     head->next = 0;
 
     return l;
+}
+
+struct ilka_list * ilka_list_open(
+        struct ilka_region *r, ilka_off_t head, size_t off)
+{
+    struct ilka_list *l = calloc(1, sizeof(struct ilka_list));
+    *l = (struct ilka_list) { r, head, off };
+    return l;
+}
+
+void ilka_list_close(struct ilka_list *l)
+{
+    free(l);
 }
 
 static const struct ilka_list_node * list_read(struct ilka_list *l, ilka_off_t off)
@@ -67,6 +83,8 @@ ilka_off_t ilka_list_next(struct ilka_list *l, const struct ilka_list_node *node
 bool ilka_list_set(struct ilka_list *l, struct ilka_list_node *node, ilka_off_t next)
 {
     (void) l;
+    ilka_assert(!(next & list_mark), "invalid offset: %p", (void *) next);
+
     return ilka_atomic_cmp_xchg(&node->next, 0, next, morder_release);
 }
 
