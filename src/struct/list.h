@@ -1,6 +1,8 @@
 /* list.h
    Rémi Attab (remi.attab@gmail.com), 29 Oct 2015
    FreeBSD-style copyright and disclaimer apply
+
+   \todo Interface needs a lot of work to make it viable in a generic scenario.
 */
 
 #pragma once

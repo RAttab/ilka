@@ -3,6 +3,29 @@
    FreeBSD-style copyright and disclaimer apply
 */
 
+
+// -----------------------------------------------------------------------------
+// state
+// -----------------------------------------------------------------------------
+
+enum state
+{
+    state_nil = 0,
+    state_set = 1,
+    state_move = 2,
+    state_tomb = 3
+};
+
+static inline enum state state_get(ilka_off_t v) { return (v >> 62) & 0x3; }
+static inline ilka_off_t state_clear(ilka_off_t v) { return v & ~(0x3UL << 62); }
+static inline ilka_off_t state_trans(ilka_off_t v, enum state s)
+{
+    ilka_assert(state_get(v) < s,
+            "invalid state transition: %d -> %d", state_get(v), s);
+    return state_clear(v) | (((ilka_off_t) s) << 62);
+}
+
+
 // -----------------------------------------------------------------------------
 // bucket
 // -----------------------------------------------------------------------------

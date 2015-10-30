@@ -20,13 +20,15 @@ static struct ilka_hash_ret table_put(
 
 struct ilka_packed hash_table
 {
-    size_t cap; // must be first.
+    // must be first for table_read to work properly.
+    size_t cap;
+
     struct ilka_list_node next;
 
+    // Helps make the struct self-sufficient (aka. no need to pass extra
+    // parameters all over the place).
     ilka_off_t table_off;
-    ilka_off_t buckets_off;
 
-    uint64_t padding[4];
     struct hash_bucket buckets[];
 };
 
@@ -49,7 +51,6 @@ static ilka_off_t table_alloc(struct ilka_hash *ht, size_t cap)
 
     table->cap = cap;
     table->table_off = off;
-    table->buckets_off = off + offsetof(struct hash_table, buckets);
 
     return off;
 }
@@ -74,8 +75,11 @@ static struct hash_table * table_write(
 static struct hash_bucket * table_write_window(
         struct ilka_hash *ht, const struct hash_table *table, size_t start)
 {
+    ilka_off_t buckets_off =
+        table->table_off + offsetof(struct hash_table, buckets);
+
     return ilka_write(ht->region,
-            table->buckets_off + start * sizeof(struct hash_bucket),
+            buckets_off + start * sizeof(struct hash_bucket),
             probe_window * sizeof(struct hash_bucket));
 }
 
