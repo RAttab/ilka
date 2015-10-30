@@ -102,6 +102,22 @@ ilka_off_t ilka_list_next(
 // write
 // -----------------------------------------------------------------------------
 
+bool ilka_list_insert(
+        struct ilka_list *list, struct ilka_list_node *prev, ilka_off_t node_off)
+{
+    struct ilka_list_node *node =
+        ilka_write(list->region, node_off + list->off, sizeof(struct ilka_list_node));
+
+    ilka_off_t next = ilka_atomic_load(&prev->next, morder_relaxed);
+    do {
+        if (next & list_mark) return false;
+
+        node->next = next;
+    } while (!ilka_atomic_cmp_xchg(&prev->next, &next, node_off, morder_release));
+
+    return true;
+}
+
 bool ilka_list_set(
         struct ilka_list *list, struct ilka_list_node *node, ilka_off_t next)
 {
