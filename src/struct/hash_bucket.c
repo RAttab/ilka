@@ -132,8 +132,8 @@ static struct ilka_hash_ret bucket_xchg(
         struct ilka_hash *ht,
         struct hash_bucket *bucket,
         struct hash_key *key,
-        ilka_off_t value,
-        ilka_off_t expected)
+        ilka_off_t expected,
+        ilka_off_t value)
 {
     ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
     switch (state_get(old_key)) {
@@ -173,7 +173,8 @@ static struct ilka_hash_ret bucket_xchg(
 static struct ilka_hash_ret bucket_del(
         struct ilka_hash *ht,
         struct hash_bucket *bucket,
-        struct hash_key *key)
+        struct hash_key *key,
+        ilka_off_t expected)
 {
     ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
     switch (state_get(old_key)) {
@@ -188,12 +189,15 @@ static struct ilka_hash_ret bucket_del(
 
     ilka_off_t new_val;
     ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
+    ilka_off_t clean_val = state_clear(old_val);
     do {
         switch(state_get(old_val)) {
         case state_nil: return make_ret(ret_skip, 0);
         case state_tomb: return make_ret(ret_skip, 0);
         case state_move: return make_ret(ret_resize, 0);
         case state_set:
+            if (expected && clean_val != expected)
+                return make_ret(ret_stop, clean_val);
             new_val = state_trans(old_val, state_tomb);
             break;
         }

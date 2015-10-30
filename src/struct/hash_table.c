@@ -71,14 +71,6 @@ static struct hash_table * table_write(
     return ilka_write(ht->region, table->table_off, sizeof(struct hash_table));
 }
 
-static struct hash_bucket * table_write_bucket(
-        struct ilka_hash *ht, const struct hash_table *table, size_t i)
-{
-    return ilka_write(ht->region,
-            table->buckets_off + i * sizeof(struct hash_bucket),
-            sizeof(struct hash_bucket));
-}
-
 static struct hash_bucket * table_write_window(
         struct ilka_hash *ht, const struct hash_table *table, size_t start)
 {
@@ -216,7 +208,6 @@ static struct ilka_hash_ret table_put(
 
         struct ilka_hash_ret ret = bucket_put(ht, bucket, key, value);
         if (ret.code == ret_skip) continue;
-        if (ret.code == ret_stop) return ret;
         if (ret.code == ret_resize) break;
         return ret;
     }
@@ -228,4 +219,57 @@ static struct ilka_hash_ret table_put(
     ret = table_resize(ht, table, start);
     if (ret.code == ret_err) return make_ret(ret_err, 0);
     return table_put(ht, ret.table, key, value);
+}
+
+static struct ilka_hash_ret table_xchg(
+        struct ilka_hash *ht,
+        const struct hash_table *table,
+        struct hash_key *key,
+        ilka_off_t expected,
+        ilka_off_t value)
+{
+    size_t start = key_hash(key) % table->cap;
+    struct hash_bucket *buckets = table_write_window(ht, table, start);
+
+    for (size_t i = 0; i < probe_window; ++i) {
+        size_t index = (start + i) % table->cap;
+        struct hash_bucket *bucket = &buckets[index];
+
+        struct ilka_hash_ret ret = bucket_xchg(ht, bucket, key, expected, value);
+        if (ret.code == ret_skip) continue;
+        if (ret.code == ret_resize) break;
+        return ret;
+    }
+
+    struct table_ret ret = table_move(ht, table, start, probe_window);
+    if (ret.code == ret_err) return make_ret(ret_err, 0);
+    if (ret.table) return table_xchg(ht, ret.table, key, expected, value);
+
+    return make_ret(ret_stop, 0);
+}
+
+static struct ilka_hash_ret table_del(
+        struct ilka_hash *ht,
+        const struct hash_table *table,
+        struct hash_key *key,
+        ilka_off_t expected)
+{
+    size_t start = key_hash(key) % table->cap;
+    struct hash_bucket *buckets = table_write_window(ht, table, start);
+
+    for (size_t i = 0; i < probe_window; ++i) {
+        size_t index = (start + i) % table->cap;
+        struct hash_bucket *bucket = &buckets[index];
+
+        struct ilka_hash_ret ret = bucket_del(ht, bucket, key, expected);
+        if (ret.code == ret_skip) continue;
+        if (ret.code == ret_resize) break;
+        return ret;
+    }
+
+    struct table_ret ret = table_move(ht, table, start, probe_window);
+    if (ret.code == ret_err) return make_ret(ret_err, 0);
+    if (ret.table) return table_del(ht, ret.table, key, expected);
+
+    return make_ret(ret_stop, 0);
 }

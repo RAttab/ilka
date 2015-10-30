@@ -28,18 +28,20 @@ bool ilka_hash_reserve(struct ilka_hash *h, size_t cap);
 size_t ilka_hash_len(struct ilka_hash *h);
 bool ilka_hash_resize(struct ilka_hash *h, size_t len);
 
-int ilka_hash_has(struct ilka_hash *h, const void *key, size_t key_len);
-ilka_off_t ilka_hash_get(struct ilka_hash *h, const void *key, size_t key_len);
-
-
 struct ilka_hash_ret
 {
     int code;
     ilka_off_t off;
 };
 
+struct ilka_hash_ret ilka_hash_get(
+        struct ilka_hash *h, const void *key, size_t key_len);
+
 struct ilka_hash_ret ilka_hash_del(
         struct ilka_hash *h, const void *key, size_t key_len);
+
+struct ilka_hash_ret ilka_hash_cmp_del(
+        struct ilka_hash *h, const void *key, size_t key_len, ilka_off_t expected);
 
 struct ilka_hash_ret ilka_hash_put(
         struct ilka_hash *h, const void *key, size_t key_len, ilka_off_t value);
