@@ -102,7 +102,8 @@ ilka_off_t ilka_list_next(
 // write
 // -----------------------------------------------------------------------------
 
-bool ilka_list_set(struct ilka_list *list, struct ilka_list_node *node, ilka_off_t next)
+bool ilka_list_set(
+        struct ilka_list *list, struct ilka_list_node *node, ilka_off_t next)
 {
     (void) list;
     ilka_assert(!(next & list_mark), "invalid offset: %p", (void *) next);
@@ -110,8 +111,41 @@ bool ilka_list_set(struct ilka_list *list, struct ilka_list_node *node, ilka_off
     return ilka_atomic_cmp_xchg(&node->next, 0, next, morder_release);
 }
 
+static bool list_clean(
+        struct ilka_list *list, ilka_off_t prev_off, ilka_off_t node_off)
+{
+    const struct ilka_list_node *node = list_read(list, node_off);
+
+    ilka_off_t next;
+    do {
+        next = ilka_atomic_load(&node->next, morder_relaxed);
+        if (!next) return true;
+
+        if (next & list_mark) {
+            struct ilka_list_node *prev =
+                ilka_write(list->region, prev_off, sizeof(struct ilka_list_node));
+
+            ilka_off_t clean_next = next & ~list_mark;
+
+            // morder_relaxed: this change has no impact on the semantics of the
+            // list so it's ordering doesn't matter.
+            return ilka_atomic_cmp_xchg(&prev->next, &node_off, clean_next, morder_relaxed);
+        }
+
+    } while (!list_clean(list, node_off + list->off, next));
+
+    return true;
+}
+
 bool ilka_list_del(struct ilka_list *list, struct ilka_list_node *node)
 {
+    const struct ilka_list_node *head =
+        ilka_read(list->region, list->head, sizeof(struct ilka_list_node));
+
+    // morder_acquire: we have to the current head before we mark in case it
+    // gets cleared mid-op.
+    ilka_off_t first = ilka_atomic_load(&head->next, morder_acquire);
+
     ilka_off_t new_next;
     ilka_off_t old_next = node->next;
     do {
@@ -122,53 +156,8 @@ bool ilka_list_del(struct ilka_list *list, struct ilka_list_node *node)
         // the list.
     } while (!ilka_atomic_cmp_xchg(&node->next, &old_next, new_next, morder_release));
 
-  restart: (void) 0;
-
-    ilka_off_t prev_off = list->head;
-    const struct ilka_list_node *prev =
-        ilka_read(list->region, prev_off, sizeof(struct ilka_list_node));
-
-    while (true) {
-        ilka_off_t cur_off = ilka_atomic_load(&prev->next, morder_relaxed);
-        if (!cur_off) return false;
-
-        const struct ilka_list_node *cur = list_read(list, cur_off);
-
-        ilka_off_t next = ilka_atomic_load(&cur->next, morder_relaxed);
-        if (!(next & list_mark)) {
-            prev_off = cur_off + list->off;
-            prev = cur;
-            continue;
-        }
-
-        struct ilka_list_node *wprev =
-            ilka_write(list->region, prev_off, sizeof(struct ilka_list_node));
-
-        ilka_off_t clean_next = next & ~list_mark;
-
-        // morder_relaxed: we're just cleaning up at this point and ordering
-        // doesn't matter much.
-        if (ilka_atomic_cmp_xchg(&wprev->next, &cur_off, clean_next, morder_relaxed)) {
-            // Note that we bail after removing only a single value because it
-            // doesn't really matter if we removed our node or node so long as
-            // we remove a node. This works out because assuming that there's n
-            // marked nodes in the list then there are n threads currently
-            // removing nodes and so our node will eventually be removed by one
-            // of the n threads.
-            //
-            // So what happens if the user frees the node after we return? Well
-            // the interface stipulates that this should be done through
-            // ilka_defer_free and since all the other del ops are taking place
-            // in an ilka epoch then the frees will all be defered until all the
-            // currently ongoing del ops have terminated. Works out all neat and
-            // tidy like.
-            return true;
-        }
-
-        // our prev pointer is no longer valid so we have to restart from
-        // scratch.
-        goto restart;
-    }
+    (void) list_clean(list, list->head, first);
+    return true;
 }
 
 ilka_off_t ilka_list_clear(struct ilka_list *list)
