@@ -22,11 +22,9 @@ bool ilka_hash_close(struct ilka_hash *h);
 
 ilka_off_t ilka_hash_off(struct ilka_hash *h);
 
+size_t ilka_hash_len(struct ilka_hash *h);
 size_t ilka_hash_cap(struct ilka_hash *h);
 bool ilka_hash_reserve(struct ilka_hash *h, size_t cap);
-
-size_t ilka_hash_len(struct ilka_hash *h);
-bool ilka_hash_resize(struct ilka_hash *h, size_t len);
 
 struct ilka_hash_ret
 {

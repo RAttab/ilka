@@ -109,7 +109,7 @@ static enum ret_code check_value(const char *name, ilka_off_t value)
 
 
 // -----------------------------------------------------------------------------
-// basics
+// meta
 // -----------------------------------------------------------------------------
 
 struct ilka_packed hash_meta
@@ -117,6 +117,31 @@ struct ilka_packed hash_meta
     size_t len;
     struct ilka_list_node tables;
 };
+
+static size_t meta_len(struct ilka_hash *ht)
+{
+    const struct hash_meta *meta =
+        ilka_read(ht->region, ht->meta, sizeof(struct hash_meta));
+
+    // morder_relaxed: len is an estimate and is expected to be off within a
+    // quiescent period so we don't put any ordering constraints on it.
+    return ilka_atomic_load(&meta->len, morder_relaxed);
+}
+
+static void meta_update_len(struct ilka_hash *ht, int value)
+{
+    struct hash_meta *meta =
+        ilka_write(ht->region, ht->meta, sizeof(struct hash_meta));
+
+    // morder_relaxed: len is an estimate and is expected to be off within a
+    // quiescent period so we don't put any ordering constraints on it.
+    (void) ilka_atomic_fetch_add(&meta->len, value, morder_relaxed);
+}
+
+
+// -----------------------------------------------------------------------------
+// basics
+// -----------------------------------------------------------------------------
 
 struct ilka_hash * ilka_hash_alloc(struct ilka_region *region)
 {
@@ -207,20 +232,12 @@ ilka_off_t ilka_hash_off(struct ilka_hash *ht)
 // sizing
 // -----------------------------------------------------------------------------
 
-size_t ilka_hash_cap(struct ilka_hash *ht)
-{
-    (void) ht;
-    return 0;
-}
-
-bool ilka_hash_reserve(struct ilka_hash *ht, size_t cap)
-{
-    (void) ht;
-    (void) cap;
-    return false;
-}
-
 size_t ilka_hash_len(struct ilka_hash *ht)
+{
+    return meta_len(ht);
+}
+
+size_t ilka_hash_cap(struct ilka_hash *ht)
 {
     (void) ht;
     return 0;
@@ -275,7 +292,12 @@ struct ilka_hash_ret ilka_hash_put(
     }
 
     struct hash_key hkey = make_key(key, key_len);
-    return table_put(ht, table_read(ht, table_off), &hkey, value);
+    struct ilka_hash_ret ret =
+        table_put(ht, table_read(ht, table_off), &hkey, value);
+
+    if (ret.code == ret_ok) meta_update_len(ht, 1);
+
+    return ret;
 }
 
 struct ilka_hash_ret _ilka_hash_xchg(
@@ -325,7 +347,12 @@ struct ilka_hash_ret _ilka_hash_del(
     if (!table_off) return make_ret(ret_stop, 0);
 
     struct hash_key hkey = make_key(key, key_len);
-    return table_del(ht, table_read(ht, table_off), &hkey, expected);
+    struct ilka_hash_ret ret =
+        table_del(ht, table_read(ht, table_off), &hkey, expected);
+
+    if (ret.code == ret_ok) meta_update_len(ht, -1);
+
+    return ret;
 }
 
 struct ilka_hash_ret ilka_hash_del(
