@@ -197,19 +197,11 @@ struct ilka_hash * ilka_hash_alloc(struct ilka_region *region)
 bool ilka_hash_free(struct ilka_hash *ht)
 {
     ilka_off_t table_off = ilka_list_head(ht->tables);
-    while (table_off) {
-        const struct hash_table *table = table_read(ht, table_off);
+    if (table_off && !table_free(ht, table_read(ht, table_off)))
+        return false;
 
-        for (size_t i = 0; i < table->cap; ++i)
-            key_free(ht, state_clear(table->buckets[i].key));
-
-        ilka_off_t next = ilka_list_next(ht->tables, &table->next);
-        ilka_free(ht->region, table_off, table_len(table->cap));
-        table_off = next;
-    }
 
     ilka_free(ht->region, ht->meta, sizeof(struct hash_meta));
-
     return ilka_hash_close(ht);
 }
 

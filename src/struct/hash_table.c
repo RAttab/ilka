@@ -60,6 +60,33 @@ static ilka_off_t table_alloc(struct ilka_hash *ht, size_t cap)
     return off;
 }
 
+static bool table_free(struct ilka_hash *ht, const struct hash_table *table)
+{
+    if (ilka_list_next(ht->tables, &table->next)) {
+        ilka_fail("unable to free with concurrent writes");
+        return false;
+    }
+
+    for (size_t i = 0; i < table->cap; ++i) {
+        const struct hash_bucket* bucket = &table->buckets[i];
+
+        switch (state_get(bucket->key)) {
+        case state_nil: break;
+        case state_tomb: break;
+
+        case state_set:
+            key_free(ht, state_clear(bucket->key));
+            break;
+
+        case state_move:
+            ilka_fail("unable to free with concurrent writes");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 
 // -----------------------------------------------------------------------------
 // read-write
