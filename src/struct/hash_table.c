@@ -20,7 +20,7 @@ static struct ilka_hash_ret table_put(
 
 struct ilka_packed hash_table
 {
-    // must be first for table_read to work properly.
+    // Must be first for table_read to work properly.
     size_t cap;
 
     struct ilka_list_node next;
@@ -28,6 +28,9 @@ struct ilka_packed hash_table
     // Helps make the struct self-sufficient (aka. no need to pass extra
     // parameters all over the place).
     ilka_off_t table_off;
+
+    // Avoids invalidating the table header when update buckets.
+    uint64_t padding[5];
 
     struct hash_bucket buckets[];
 };
@@ -46,6 +49,8 @@ static ilka_off_t table_alloc(struct ilka_hash *ht, size_t cap)
 {
     size_t len = table_len(cap);
     ilka_off_t off = ilka_alloc(ht->region, len);
+    if (!off) return 0;
+
     struct hash_table *table = ilka_write(ht->region, off, len);
     memset(table, 0, len);
 
@@ -149,6 +154,8 @@ static struct table_ret table_resize(
 {
     size_t cap = table_resize_cap(table, start);
     ilka_off_t next = table_alloc(ht, cap);
+    if (!next) return (struct table_ret) { ret_err, 0 };
+
     struct hash_table *cur = table_write(ht, table);
 
     if (!ilka_list_set(ht->tables, &cur->next, next)) {
@@ -167,6 +174,38 @@ static struct table_ret table_resize(
 
     return (struct table_ret) { ret_ok, table_read(ht, next) };
 }
+
+static bool table_reserve(
+        struct ilka_hash *ht,
+        const struct hash_table *table,
+        size_t cap)
+{
+    if (cap <= table->cap) return true;
+
+    ilka_off_t next = table_alloc(ht, cap);
+    if (!next) return false;
+
+    struct hash_table *cur = table_write(ht, table);
+
+    if (!ilka_list_set(ht->tables, &cur->next, next)) {
+        ilka_free(ht->region, next, table_len(cap));
+
+        next = ilka_list_next(ht->tables, &table->next);
+        return table_reserve(ht, table_read(ht, next), cap);
+    }
+
+    struct table_ret ret = table_move(ht, table, 0, table->cap);
+    if (ret.code == ret_err) {
+        // \todo: we need to recover the table... somehow...
+        return false;
+    }
+
+    if (ilka_list_del(ht->tables, &cur->next))
+        ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+
+    return true;
+}
+
 
 
 // -----------------------------------------------------------------------------
