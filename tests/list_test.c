@@ -11,6 +11,15 @@
 // utils
 // -----------------------------------------------------------------------------
 
+struct list_test
+{
+    struct ilka_region *r;
+    struct ilka_list *list;
+    struct ilka_list_node *root;
+
+    size_t runs;
+};
+
 struct node
 {
     uint64_t value;
@@ -60,7 +69,7 @@ void node_free(struct ilka_region *r, struct node *node)
 // basics
 // -----------------------------------------------------------------------------
 
-START_TEST(basic_seq_test)
+START_TEST(basic_test_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
@@ -126,12 +135,66 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// insert
+// -----------------------------------------------------------------------------
+
+void run_insert_test(size_t id, void *data)
+{
+    struct list_test *t = data;
+
+    for (size_t i = 0; i < t->runs; ++i) {
+        struct node *node = node_alloc(t->r, id << 32 | i);
+        ilka_list_insert(t->list, t->root, node->off);
+    }
+
+    size_t exp = t->runs;
+    ilka_off_t off = ilka_list_head(t->list);
+    while (off) {
+        const struct node *node = ilka_read(t->r, off, sizeof(struct node));
+
+        if ((node->value >> 32) == id) {
+            size_t i = node->value & ((1UL << 32) - 1);
+            ilka_assert(i == --exp, "id=%lu, node=%p, v=%p",
+                    id, (void *) node->off, (void *) node->value);
+        }
+
+        off = ilka_list_next(t->list, &node->next);
+    }
+
+    ilka_assert(exp == 0, "id=%lu, exp=%lu", id, exp);
+}
+
+START_TEST(insert_test_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    ilka_off_t root_off = ilka_alloc(r, sizeof(struct ilka_list_node));
+    struct ilka_list_node *root =
+        ilka_write(r, root_off, sizeof(struct ilka_list_node));
+    struct ilka_list *list =
+        ilka_list_alloc(r, root_off, offsetof(struct node, next));
+
+    struct list_test data = {
+        .r = r,
+        .list = list,
+        .root = root,
+        .runs = 1000000,
+    };
+    ilka_run_threads(run_insert_test, &data);
+}
+END_TEST
+
+
+
+// -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, basic_seq_test, true);
+    ilka_tc(s, basic_test_st, true);
+    ilka_tc(s, insert_test_mt, true);
 }
 
 int main(void)
