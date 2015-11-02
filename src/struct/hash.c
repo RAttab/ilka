@@ -150,8 +150,9 @@ static ilka_off_t meta_ensure_table(struct ilka_hash *ht, size_t cap)
         table_off = table_alloc(ht, cap);
         if (!table_off) return 0;
 
-        if (ilka_list_set(ht->tables, &meta->tables, table_off))
-            return table_off;
+        int ret = ilka_list_set(ht->tables, &meta->tables, table_off);
+        ilka_assert(ret >= 0, "unexpected error from ilka_list_set");
+        if (ret) return table_off;
 
         ilka_free(ht->region, table_off, table_len(cap));
     }
@@ -260,6 +261,8 @@ size_t ilka_hash_cap(struct ilka_hash *ht)
         cap = table->cap;
 
         table_off = ilka_list_next(ht->tables, &table->next);
+        ilka_assert(table_off == ILKA_LIST_ERROR,
+                "unexpected error from ilka_list_next");
     }
 
     return cap;

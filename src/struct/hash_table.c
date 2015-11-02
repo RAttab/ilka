@@ -62,7 +62,9 @@ static ilka_off_t table_alloc(struct ilka_hash *ht, size_t cap)
 
 static bool table_free(struct ilka_hash *ht, const struct hash_table *table)
 {
-    if (ilka_list_next(ht->tables, &table->next)) {
+    ilka_off_t next_off = ilka_list_next(ht->tables, &table->next);
+    ilka_assert(next_off != ILKA_LIST_ERROR, "unexpected error from ilka_list_next");
+    if (next_off) {
         ilka_fail("unable to free with concurrent writes");
         return false;
     }
@@ -127,6 +129,7 @@ static struct table_ret table_move(
         size_t len)
 {
     ilka_off_t next = ilka_list_next(ht->tables, &src_table->next);
+    ilka_assert(next != ILKA_LIST_ERROR, "unexpected error from ilka_list_next");
     if (!next) return (struct table_ret) { ret_ok, NULL };
 
     const struct hash_table *dst_table = table_read(ht, next);
@@ -185,19 +188,22 @@ static struct table_ret table_resize(
 
     struct hash_table *cur = table_write(ht, table);
 
-    if (!ilka_list_set(ht->tables, &cur->next, next)) {
+    int lret = ilka_list_set(ht->tables, &cur->next, next);
+    ilka_assert(lret >= 0, "unexpected error from ilka_list_set");
+    if (!lret) {
         ilka_free(ht->region, next, table_len(cap));
         return table_move(ht, table, start, probe_window);
     }
 
-    struct table_ret ret = table_move(ht, table, 0, table->cap);
-    if (ret.code == ret_err) {
+    struct table_ret tret = table_move(ht, table, 0, table->cap);
+    if (tret.code == ret_err) {
         // \todo: we need to recover the table... somehow...
-        return ret;
+        return tret;
     }
 
-    if (ilka_list_del(ht->tables, &cur->next))
-        ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+    lret = ilka_list_del(ht->tables, &cur->next);
+    ilka_assert(lret >= 0, "unexpected error from ilka_list_del");
+    if (lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
 
     return (struct table_ret) { ret_ok, table_read(ht, next) };
 }
@@ -214,21 +220,25 @@ static bool table_reserve(
 
     struct hash_table *cur = table_write(ht, table);
 
-    if (!ilka_list_set(ht->tables, &cur->next, next)) {
+    int lret = ilka_list_set(ht->tables, &cur->next, next);
+    ilka_assert(lret >= 0, "unexpected error from ilka_list_set");
+    if (!lret) {
         ilka_free(ht->region, next, table_len(cap));
 
         next = ilka_list_next(ht->tables, &table->next);
+        ilka_assert(next != ILKA_LIST_ERROR, "unexpected error from ilka_list_next");
         return table_reserve(ht, table_read(ht, next), cap);
     }
 
-    struct table_ret ret = table_move(ht, table, 0, table->cap);
-    if (ret.code == ret_err) {
+    struct table_ret tret = table_move(ht, table, 0, table->cap);
+    if (tret.code == ret_err) {
         // \todo: we need to recover the table... somehow...
         return false;
     }
 
-    if (ilka_list_del(ht->tables, &cur->next))
-        ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+    lret = ilka_list_del(ht->tables, &cur->next);
+    ilka_assert(lret >= 0, "unexpected error from ilka_list_del");
+    if (lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
 
     return true;
 }

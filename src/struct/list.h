@@ -13,6 +13,8 @@
 // list
 // -----------------------------------------------------------------------------
 
+#define ILKA_LIST_ERROR -1UL
+
 struct ilka_list;
 struct ilka_packed ilka_list_node { ilka_off_t next; };
 
@@ -25,13 +27,13 @@ void ilka_list_close(struct ilka_list *l);
 ilka_off_t ilka_list_head(struct ilka_list *l);
 ilka_off_t ilka_list_next(struct ilka_list *l, const struct ilka_list_node *node);
 
-bool ilka_list_insert(
+int ilka_list_insert(
         struct ilka_list *l, struct ilka_list_node *prev, ilka_off_t node);
 
-bool ilka_list_set(
+int ilka_list_set(
         struct ilka_list *l, struct ilka_list_node *node, ilka_off_t next);
 
-bool ilka_list_del(
+int ilka_list_del(
         struct ilka_list *l, struct ilka_list_node *node);
 
 ilka_off_t ilka_list_clear(struct ilka_list *l);
