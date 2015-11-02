@@ -173,9 +173,8 @@ int ilka_list_set(
     if (!check_node(node, "node")) return -1;
     if (!check_off(next, "next")) return -1;
 
-    ilka_assert(!(next & list_mark), "invalid offset: %p", (void *) next);
-
-    return ilka_atomic_cmp_xchg(&node->next, 0, next, morder_release);
+    ilka_off_t old = 0;
+    return ilka_atomic_cmp_xchg(&node->next, &old, next, morder_release);
 }
 
 static int list_clean(
