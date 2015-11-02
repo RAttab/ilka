@@ -231,16 +231,13 @@ START_TEST(del_test_mt)
         .r = r,
         .list = list,
         .root = root,
-        .runs = 500,
+        .runs = 10,
     };
     ilka_run_threads(run_del_test, &data);
 
     ck_assert_int_eq(ilka_list_head(list), 0);
 }
 END_TEST
-
-
-
 
 
 // -----------------------------------------------------------------------------
