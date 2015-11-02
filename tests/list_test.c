@@ -185,6 +185,62 @@ START_TEST(insert_test_mt)
 }
 END_TEST
 
+// -----------------------------------------------------------------------------
+// insert
+// -----------------------------------------------------------------------------
+
+void run_del_test(size_t id, void *data)
+{
+    struct list_test *t = data;
+
+    enum { n = 10 };
+    struct node *nodes[n] = { 0 };
+
+    for (size_t run = 0; run < t->runs; ++run) {
+        size_t epoch = ilka_enter(t->r);
+
+        for (size_t i = 0; i < n; ++i) {
+            nodes[i] = node_alloc(t->r, i);
+            ilka_list_insert(t->list, t->root, nodes[i]->off);
+        }
+
+        for (size_t i = 0; i < n; ++i) {
+            int ret = ilka_list_del(t->list, &nodes[i]->next);
+            ilka_assert(ret == 1, "id=%lu, node=%p, ret=%d",
+                    id, (void *) nodes[i]->off, ret);
+
+            ilka_defer_free(t->r, nodes[i]->off, sizeof(struct node));
+        }
+
+        ilka_exit(t->r, epoch);
+    }
+}
+
+START_TEST(del_test_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    ilka_off_t root_off = ilka_alloc(r, sizeof(struct ilka_list_node));
+    struct ilka_list_node *root =
+        ilka_write(r, root_off, sizeof(struct ilka_list_node));
+    struct ilka_list *list =
+        ilka_list_alloc(r, root_off, offsetof(struct node, next));
+
+    struct list_test data = {
+        .r = r,
+        .list = list,
+        .root = root,
+        .runs = 500,
+    };
+    ilka_run_threads(run_del_test, &data);
+
+    ck_assert_int_eq(ilka_list_head(list), 0);
+}
+END_TEST
+
+
+
 
 
 // -----------------------------------------------------------------------------
@@ -195,6 +251,7 @@ void make_suite(Suite *s)
 {
     ilka_tc(s, basic_test_st, true);
     ilka_tc(s, insert_test_mt, true);
+    ilka_tc(s, del_test_mt, true);
 }
 
 int main(void)
