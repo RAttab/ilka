@@ -9,6 +9,7 @@
 
 #include "arch.h"
 #include "compiler.h"
+#include "preproc.h"
 #include "atomic.h"
 #include "endian.h"
 #include "bits.h"
