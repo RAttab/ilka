@@ -261,7 +261,7 @@ size_t ilka_hash_cap(struct ilka_hash *ht)
         cap = table->cap;
 
         table_off = ilka_list_next(ht->tables, &table->next);
-        ilka_assert(table_off == ILKA_LIST_ERROR,
+        ilka_assert(table_off != ILKA_LIST_ERROR,
                 "unexpected error from ilka_list_next");
     }
 

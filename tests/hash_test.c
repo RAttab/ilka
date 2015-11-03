@@ -11,18 +11,19 @@
 // -----------------------------------------------------------------------------
 
 static void _check_ret(
-        const char *cmd, struct ilka_hash_ret ret, int code, ilka_off_t off)
+        const char *cmd, struct ilka_hash_ret ret, bool code, ilka_off_t off)
 {
     ilka_assert(ret.code >= 0, "%s -> hash op raised an error", cmd);
 
-    if (!ret.code)
-        ilka_assert(code, "%s -> code mismatch: %d != %d", cmd, ret.code, code);
-    else ilka_assert(code > 0, "%s -> code mismatch: %d != %d", cmd, ret.code, code);
+    if (ret.code)
+        ilka_assert(!code, "%s -> code mismatch: %d != %d", cmd, ret.code, code);
+    else ilka_assert(code, "%s -> code mismatch: %d != %d", cmd, ret.code, code);
 
     ilka_assert(ret.off == off, "%s -> off mismatch: %lu != %lu", cmd, ret.off, off);
 }
 
-#define check_ret(cmd, code, off) _check_ret(#cmd, cmd, code, off)
+#define check_ret(cmd, code, off) \
+    _check_ret(ilka_stringify(__LINE__) ":" #cmd, cmd, code, off)
 
 
 // -----------------------------------------------------------------------------
@@ -44,12 +45,46 @@ START_TEST(basic_test_st)
     ck_assert_int_eq(ilka_hash_cap(h0), 0);
     ck_assert_int_eq(ilka_hash_cap(h1), 0);
 
-    uint64_t keys[4] = { 0, 1, 2, 3 };
-    enum { n = sizeof(uint64_t) };
+    enum {
+        key_count = 128,
+        klen = sizeof(uint64_t)
+    };
 
-    check_ret(ilka_hash_get(h0, &keys[0], n), 1, 0);
-    check_ret(ilka_hash_del(h0, &keys[0], n), 1, 0);
-    check_ret(ilka_hash_xchg(h0, &keys[0], n, 10), 1, 0);
+    uint64_t keys[key_count];
+    for (size_t i = 0; i < key_count; ++i) keys[i] = i;
+
+    for (size_t round = 0; round < 8; ++round) {
+        for (size_t i = 0; i < key_count; ++i) {
+            check_ret(ilka_hash_get(h0, &keys[i], klen), false, 0);
+            check_ret(ilka_hash_del(h0, &keys[i], klen), false, 0);
+            check_ret(ilka_hash_xchg(h0, &keys[i], klen, 10), false, 0);
+
+            check_ret(ilka_hash_put(h0, &keys[i], klen, 10), true, 0);
+            check_ret(ilka_hash_put(h1, &keys[i], klen, 100), false, 10);
+
+            check_ret(ilka_hash_get(h0, &keys[i], klen), true, 10);
+            check_ret(ilka_hash_get(h1, &keys[i], klen), true, 10);
+
+            check_ret(ilka_hash_xchg(h0, &keys[i], klen, 20), true, 10);
+            check_ret(ilka_hash_cmp_xchg(h0, &keys[i], klen, 10, 30), false, 20);
+            check_ret(ilka_hash_cmp_xchg(h0, &keys[i], klen, 20, 40), true, 20);
+        }
+
+        ck_assert_int_eq(ilka_hash_len(h0), key_count);
+        for (size_t i = 0; i < key_count; ++i)
+            check_ret(ilka_hash_get(h1, &keys[i], klen), true, 40);
+
+        for (size_t i = 0; i < key_count; ++i) {
+            check_ret(ilka_hash_cmp_del(h0, &keys[i], klen, 10), false, 40);
+            check_ret(ilka_hash_cmp_del(h0, &keys[i], klen, 40), true, 40);
+
+            check_ret(ilka_hash_get(h0, &keys[i], klen), false, 0);
+            check_ret(ilka_hash_del(h0, &keys[i], klen), false, 0);
+            check_ret(ilka_hash_xchg(h0, &keys[i], klen, 10), false, 0);
+        }
+
+    }
+    ilka_log("hash.basic.test", "final cap: %lu", ilka_hash_cap(h1));
 
     ilka_hash_close(h1);
     ilka_hash_free(h0);
