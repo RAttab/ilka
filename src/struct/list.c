@@ -133,7 +133,7 @@ ilka_off_t ilka_list_next(
         node = list_read(list, off & ~list_mark);
 
         ilka_off_t next = ilka_atomic_load(&node->next, morder_relaxed);
-        if (!(next & list_mark)) return off;
+        if (!(next & list_mark)) return off & ~list_mark;
 
         off = next;
     }
