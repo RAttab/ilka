@@ -96,12 +96,72 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// split test
+// -----------------------------------------------------------------------------
+
+struct hash_test
+{
+    struct ilka_region *r;
+    struct ilka_hash *h;
+
+    size_t runs;
+};
+
+void run_split_test(size_t id, void *data)
+{
+    struct hash_test *t = data;
+
+    enum { nkey = 16, klen = sizeof(uint64_t) };
+    uint64_t keys[nkey];
+
+    for (size_t i = 0; i < nkey; ++i)
+        keys[i] = id << 32 | i;
+
+    for (size_t run = 0; run < t->runs; ++run) {
+        ilka_epoch_t epoch = ilka_enter(t->r);
+
+        for (size_t i = 0; i < nkey; ++i)
+            check_ret(ilka_hash_get(t->h, &keys[i], klen), false, 0);
+
+        for (size_t i = 0; i < nkey; ++i)
+            check_ret(ilka_hash_put(t->h, &keys[i], klen, 10), true, 0);
+
+        for (size_t i = 0; i < nkey; ++i)
+            check_ret(ilka_hash_get(t->h, &keys[i], klen), true, 10);
+
+        for (size_t i = 0; i < nkey; ++i)
+            check_ret(ilka_hash_xchg(t->h, &keys[i], klen, 20), true, 10);
+
+        for (size_t i = 0; i < nkey; ++i)
+            check_ret(ilka_hash_del(t->h, &keys[i], klen), true, 20);
+
+        ilka_exit(t->r, epoch);
+    }
+}
+
+START_TEST(split_test_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+    struct ilka_hash *h = ilka_hash_alloc(r);
+
+    struct hash_test data = { .r = r, .h = h, .runs = 1000 };
+    ilka_run_threads(run_split_test, &data);
+
+    ilka_hash_free(h);
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
 
 void make_suite(Suite *s)
 {
     ilka_tc(s, basic_test_st, true);
+    ilka_tc(s, split_test_mt, false);
 }
 
 int main(void)
