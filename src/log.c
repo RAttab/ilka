@@ -84,10 +84,10 @@ static struct log_ring *ring_get()
 static void ring_log(const char *title, const char *fmt, va_list args)
 {
     struct log_ring *ring = ring_get();
-    struct log_msg *data = ilka_atomic_load(&ring->data, morder_relaxed);
-    if (!data) return;
 
-    size_t i = ring->pos++;
+    struct log_msg *data = ilka_atomic_load(&ring->data, morder_relaxed);
+    size_t i = ring->pos++ % ring_size;
+
     data[i].tick = tick_inc();
     data[i].tid = ilka_tid();
     data[i].title = title;
@@ -103,9 +103,10 @@ static size_t ring_count()
 
 static int ring_cmp(const void *lhs_, const void *rhs_)
 {
-    const struct log_msg *lhs = lhs_;
-    const struct log_msg *rhs = rhs_;
-    return ((ssize_t) rhs->tick) - ((ssize_t) lhs->tick);
+    struct log_msg *const *lhs = lhs_;
+    struct log_msg *const *rhs = rhs_;
+
+    return ((ssize_t) (*rhs)->tick) - ((ssize_t) (*lhs)->tick);
 }
 
 static void ring_dump()
@@ -125,13 +126,14 @@ static void ring_dump()
 
     size_t k = 0;
     for (size_t i = 0; i < rings_len; ++i) {
-        for (size_t j = 0; j < ring_size; ++i)
+        for (size_t j = 0; j < ring_size; ++j)
             msgs[k++] = &rings[i][j];
     }
 
     qsort(msgs, k, sizeof(struct log_msg *), &ring_cmp);
 
     for (size_t i = 0; i < k; ++i) {
+        if (!msgs[i]->tick) continue;
         fprintf(stderr, "[%8lu] <%lu> %s: %s\n",
                 msgs[i]->tick, msgs[i]->tid, msgs[i]->title, msgs[i]->msg);
     }
