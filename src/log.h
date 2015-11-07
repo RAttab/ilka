@@ -5,9 +5,12 @@
 
 #pragma once
 
+
 // -----------------------------------------------------------------------------
 // log
 // -----------------------------------------------------------------------------
 
-void ilka_logt(const char *title);
+#define ILKA_LOG_RING 0
+
 void ilka_log(const char *title, const char *fmt, ...) ilka_printf(2, 3);
+void ilka_log_dump();
