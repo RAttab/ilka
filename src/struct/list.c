@@ -181,17 +181,16 @@ int ilka_list_set(
     return ilka_atomic_cmp_xchg(&node->next, &old, next, morder_release);
 }
 
-static int list_clean(
+static bool list_clean(
         struct ilka_list *list,
         const struct ilka_list_node *target,
         ilka_off_t prev_off,
         ilka_off_t node_off)
 {
     const struct ilka_list_node *node = list_read(list, node_off);
+
     ilka_off_t next = ilka_atomic_load(&node->next, morder_relaxed);
-
     while (true) {
-
         ilka_off_t clean_next = next & ~list_mark;
         ilka_assert(node_off != clean_next,
                 "node self-reference: off=%p, next=%p",
@@ -200,23 +199,17 @@ static int list_clean(
         if (node == target) {
             struct ilka_list_node *prev =
                 ilka_write(list->region, prev_off, sizeof(struct ilka_list_node));
-
-            if (ilka_atomic_cmp_xchg(&prev->next, &node_off, clean_next, morder_relaxed))
-                return 0;
-            return 1;
+            return ilka_atomic_cmp_xchg(&prev->next, &node_off, clean_next, morder_relaxed);
         }
 
-        if (!clean_next) {
-            ilka_fail("unable to find node '%p' in list", (void *) target);
-            return -1;
-        }
+        // if it's not in the list then someone else has removed the node.
+        if (!clean_next) return true;
 
         ilka_off_t new_prev = next & list_mark ? prev_off : node_off + list->off;
-        int ret = list_clean(list, target, new_prev, clean_next);
-        if (ret <= 0) return ret;
+        if (list_clean(list, target, new_prev, clean_next)) return true;
 
         next = ilka_atomic_load(&node->next, morder_relaxed);
-        if (next & list_mark) return 1;
+        if (next & list_mark) return false;
     }
 
     ilka_unreachable();
@@ -229,10 +222,6 @@ int ilka_list_del(struct ilka_list *list, struct ilka_list_node *node)
     const struct ilka_list_node *head =
         ilka_read(list->region, list->head, sizeof(struct ilka_list_node));
 
-    // morder_acquire: we have to the current head before we mark in case it
-    // gets cleared mid-op.
-    ilka_off_t first = ilka_atomic_load(&head->next, morder_acquire);
-
     ilka_off_t new_next;
     ilka_off_t old_next = ilka_atomic_load(&node->next, morder_relaxed);
     do {
@@ -243,9 +232,12 @@ int ilka_list_del(struct ilka_list *list, struct ilka_list_node *node)
         // the list.
     } while (!ilka_atomic_cmp_xchg(&node->next, &old_next, new_next, morder_release));
 
-    int ret;
-    while ((ret = list_clean(list, node, list->head, first)) > 0);
-    return ret;
+    ilka_off_t first;
+    do {
+        first = ilka_atomic_load(&head->next, morder_relaxed);
+    } while (!list_clean(list, node, list->head, first));
+
+    return 0;
 }
 
 ilka_off_t ilka_list_clear(struct ilka_list *list)

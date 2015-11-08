@@ -201,17 +201,12 @@ void run_del_test(size_t id, void *data)
 
         for (size_t i = 0; i < n; ++i) {
             nodes[i] = node_alloc(t->r, i);
-            ilka_log("test.ins", "i=%lu/%lu, off=%p", i, run, (void *) nodes[i]->off);
 
             int ret = ilka_list_insert(t->list, t->root, nodes[i]->off);
-            ilka_assert(ret == 1,
-                    "unable to insert node %p at root", (void *) nodes[i]->off);
+            ilka_assert(ret > 0, "unable to insert node %p at root", (void *) nodes[i]->off);
         }
 
         for (size_t i = 0; i < n; ++i) {
-            ilka_log("test.del", "i=%lu/%lu, epoch=%d, off=%p",
-                    i, run, epoch, (void *) nodes[i]->off);
-
             int ret = ilka_list_del(t->list, &nodes[i]->next);
             ilka_assert(!ret, "node=%p, ret=%d", (void *) nodes[i]->off, ret);
 
@@ -220,7 +215,6 @@ void run_del_test(size_t id, void *data)
 
         ilka_exit(t->r, epoch);
     }
-    ilka_log("test.done", "id=%lu", id);
 }
 
 START_TEST(del_test_mt)
@@ -241,7 +235,6 @@ START_TEST(del_test_mt)
         .runs = 100,
     };
     ilka_run_threads(run_del_test, &data);
-    ilka_log("test.complete", " ");
 
     ck_assert_int_eq(ilka_list_head(list), 0);
 }
