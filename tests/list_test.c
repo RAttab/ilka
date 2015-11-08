@@ -191,6 +191,8 @@ END_TEST
 
 void run_del_test(size_t id, void *data)
 {
+    (void) id;
+
     struct list_test *t = data;
 
     enum { n = 10 };
@@ -232,7 +234,7 @@ START_TEST(del_test_mt)
         .r = r,
         .list = list,
         .root = root,
-        .runs = 100,
+        .runs = 1000,
     };
     ilka_run_threads(run_del_test, &data);
 
