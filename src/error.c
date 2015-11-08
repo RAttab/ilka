@@ -14,6 +14,7 @@ __thread struct ilka_error ilka_err = { 0 };
 void ilka_abort()
 {
     ilka_perror(&ilka_err);
+    ilka_log_dump();
     abort();
 }
 
