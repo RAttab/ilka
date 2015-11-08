@@ -109,14 +109,14 @@ START_TEST(basic_test_st)
     ck_assert_int_eq(ilka_list_next(l0, &n2->next), n1->off);
     check_list(r, l0, root, 10, 30, 20);
 
-    ck_assert_int_eq(ilka_list_del(l0, &n2->next), 1);
+    ck_assert_int_eq(ilka_list_del(l0, &n2->next), 0);
     ck_assert_int_eq(ilka_list_next(l0, &n0->next), n1->off);
     check_list(r, l0, root, 10, 20);
 
-    ck_assert_int_eq(ilka_list_del(l0, &n2->next), 0);
+    ck_assert_int_eq(ilka_list_del(l0, &n2->next), 1);
     check_list(r, l0, root, 10, 20);
 
-    ck_assert_int_eq(ilka_list_del(l0, &n0->next), 1);
+    ck_assert_int_eq(ilka_list_del(l0, &n0->next), 0);
     ck_assert_int_eq(ilka_list_next(l0, root), n1->off);
     check_list(r, l0, root, 20);
 
@@ -186,7 +186,7 @@ START_TEST(insert_test_mt)
 END_TEST
 
 // -----------------------------------------------------------------------------
-// insert
+// del
 // -----------------------------------------------------------------------------
 
 void run_del_test(size_t id, void *data)
@@ -197,23 +197,30 @@ void run_del_test(size_t id, void *data)
     struct node *nodes[n] = { 0 };
 
     for (size_t run = 0; run < t->runs; ++run) {
-        size_t epoch = ilka_enter(t->r);
+        ilka_epoch_t epoch = ilka_enter(t->r);
 
         for (size_t i = 0; i < n; ++i) {
             nodes[i] = node_alloc(t->r, i);
-            ilka_list_insert(t->list, t->root, nodes[i]->off);
+            ilka_log("test.ins", "i=%lu/%lu, off=%p", i, run, (void *) nodes[i]->off);
+
+            int ret = ilka_list_insert(t->list, t->root, nodes[i]->off);
+            ilka_assert(ret == 1,
+                    "unable to insert node %p at root", (void *) nodes[i]->off);
         }
 
         for (size_t i = 0; i < n; ++i) {
+            ilka_log("test.del", "i=%lu/%lu, epoch=%d, off=%p",
+                    i, run, epoch, (void *) nodes[i]->off);
+
             int ret = ilka_list_del(t->list, &nodes[i]->next);
-            ilka_assert(ret == 1, "id=%lu, node=%p, ret=%d",
-                    id, (void *) nodes[i]->off, ret);
+            ilka_assert(!ret, "node=%p, ret=%d", (void *) nodes[i]->off, ret);
 
             ilka_defer_free(t->r, nodes[i]->off, sizeof(struct node));
         }
 
         ilka_exit(t->r, epoch);
     }
+    ilka_log("test.done", "id=%lu", id);
 }
 
 START_TEST(del_test_mt)
@@ -231,9 +238,10 @@ START_TEST(del_test_mt)
         .r = r,
         .list = list,
         .root = root,
-        .runs = 10,
+        .runs = 100,
     };
     ilka_run_threads(run_del_test, &data);
+    ilka_log("test.complete", " ");
 
     ck_assert_int_eq(ilka_list_head(list), 0);
 }
