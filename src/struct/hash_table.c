@@ -4,17 +4,6 @@
 */
 
 // -----------------------------------------------------------------------------
-// prototypes
-// -----------------------------------------------------------------------------
-
-static struct ilka_hash_ret table_put(
-        struct ilka_hash *ht,
-        const struct hash_table *table,
-        struct hash_key *key,
-        ilka_off_t value);
-
-
-// -----------------------------------------------------------------------------
 // table
 // -----------------------------------------------------------------------------
 
@@ -153,7 +142,13 @@ static struct table_window table_write_window(
 // resize
 // -----------------------------------------------------------------------------
 
-static struct table_ret table_move(
+static struct ilka_hash_ret table_move(
+        struct ilka_hash *ht,
+        const struct hash_table *table,
+        struct hash_key *key,
+        ilka_off_t value);
+
+static struct table_ret table_move_window(
         struct ilka_hash *ht,
         const struct hash_table *src_table,
         size_t start,
@@ -173,17 +168,20 @@ static struct table_ret table_move(
 
         ilka_off_t key_off = ilka_atomic_load(&src->key, morder_relaxed);
         struct hash_key key = key_from_off(ht, state_clear(key_off));
-
         ilka_off_t val = state_clear(ilka_atomic_load(&src->val, morder_relaxed));
 
+        struct ilka_hash_ret ret = table_move(ht, dst_table, &key, val);
 
-        struct ilka_hash_ret ret = table_put(ht, dst_table, &key, val);
+        ilka_log("hash.table.mov", "table=%p -> %p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
+                (void *) src_table, (void *) dst_table,
+                (void *) *((uint64_t *) key.data), (void *) val,
+                (void *) src,
+                ret.code, (void *) ret.off);
+
         if (ret.code == ret_err) return (struct table_ret) { ret_err, NULL };
+        ilka_assert(ret.code == ret_ok, "unexpected ret code: %d", ret.code);
 
-        ilka_assert(ret.code == ret_ok || ret.code == ret_stop,
-                "unexpected ret code: %d", ret.code);
-
-        // morder_relaxed: these are not linearlization point and just purely
+        // morder_relaxed: these are not linearlization point but merely
         // bookeeping so no ordering requirements applies.
         bucket_tomb_key(ht, &src->key, morder_relaxed);
         bucket_tomb_val(&src->val, morder_relaxed);
@@ -228,10 +226,10 @@ static struct table_ret table_resize(
     ilka_assert(lret >= 0, "unexpected error from ilka_list_set");
     if (!lret) {
         ilka_free(ht->region, next, table_len(cap));
-        return table_move(ht, table, start, probe_window);
+        return table_move_window(ht, table, start, probe_window);
     }
 
-    struct table_ret tret = table_move(ht, table, 0, table->cap);
+    struct table_ret tret = table_move_window(ht, table, 0, table->cap);
     if (tret.code == ret_err) {
         // \todo: we need to recover the table... somehow...
         return tret;
@@ -266,7 +264,7 @@ static bool table_reserve(
         return table_reserve(ht, table_read(ht, next), cap);
     }
 
-    struct table_ret tret = table_move(ht, table, 0, table->cap);
+    struct table_ret tret = table_move_window(ht, table, 0, table->cap);
     if (tret.code == ret_err) {
         // \todo: we need to recover the table... somehow...
         return false;
@@ -296,13 +294,17 @@ static struct ilka_hash_ret table_get(
         const struct hash_bucket *bucket = &table->buckets[index];
 
         struct ilka_hash_ret ret = bucket_get(ht, bucket, key);
+        ilka_log("hash.table.get", "table=%p, key=%p, bucket=%p, ret={ %d, %p }",
+                (void *) table, (void *) *((uint64_t *) key->data),
+                (void *) bucket, ret.code, (void *) ret.off);
+
         if (ret.code == ret_skip) continue;
         if (ret.code == ret_stop) break;
         if (ret.code == ret_resize) break;
         return ret;
     }
 
-    struct table_ret ret = table_move(ht, table, start, probe_window);
+    struct table_ret ret = table_move_window(ht, table, start, probe_window);
     if (ret.code == ret_err) return make_ret(ret_err, 0);
     if (ret.table) return table_get(ht, ret.table, key);
 
@@ -322,12 +324,16 @@ static struct ilka_hash_ret table_put(
         struct hash_bucket *bucket = table_window_bucket(&window, i);
 
         struct ilka_hash_ret ret = bucket_put(ht, bucket, key, value);
+        ilka_log("hash.table.put", "table=%p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
+                (void *) table, (void *) *((uint64_t *) key->data), (void *) value,
+                (void *) bucket, ret.code, (void *) ret.off);
+
         if (ret.code == ret_skip) continue;
         if (ret.code == ret_resize) break;
         return ret;
     }
 
-    struct table_ret ret = table_move(ht, table, start, probe_window);
+    struct table_ret ret = table_move_window(ht, table, start, probe_window);
     if (ret.code == ret_err) return make_ret(ret_err, 0);
     if (ret.table) return table_put(ht, ret.table, key, value);
 
@@ -350,12 +356,17 @@ static struct ilka_hash_ret table_xchg(
         struct hash_bucket *bucket = table_window_bucket(&window, i);
 
         struct ilka_hash_ret ret = bucket_xchg(ht, bucket, key, expected, value);
+        ilka_log("hash.table.xch", "table=%p, key=%p, val={ %p, %p }, bucket=%p, ret={ %d, %p }",
+                (void *) table, (void *) *((uint64_t *) key->data),
+                (void *) expected, (void *) value,
+                (void *) bucket, ret.code, (void *) ret.off);
+
         if (ret.code == ret_skip) continue;
         if (ret.code == ret_resize) break;
         return ret;
     }
 
-    struct table_ret ret = table_move(ht, table, start, probe_window);
+    struct table_ret ret = table_move_window(ht, table, start, probe_window);
     if (ret.code == ret_err) return make_ret(ret_err, 0);
     if (ret.table) return table_xchg(ht, ret.table, key, expected, value);
 
@@ -375,14 +386,49 @@ static struct ilka_hash_ret table_del(
         struct hash_bucket *bucket = table_window_bucket(&window, i);
 
         struct ilka_hash_ret ret = bucket_del(ht, bucket, key, expected);
+        ilka_log("hash.table.del", "table=%p, key=%p, exp=%p, bucket=%p, ret={ %d, %p }",
+                (void *) table, (void *) *((uint64_t *) key->data), (void *) expected,
+                (void *) bucket, ret.code, (void *) ret.off);
+
         if (ret.code == ret_skip) continue;
         if (ret.code == ret_resize) break;
         return ret;
     }
 
-    struct table_ret ret = table_move(ht, table, start, probe_window);
+    struct table_ret ret = table_move_window(ht, table, start, probe_window);
     if (ret.code == ret_err) return make_ret(ret_err, 0);
     if (ret.table) return table_del(ht, ret.table, key, expected);
 
     return make_ret(ret_stop, 0);
+}
+
+static struct ilka_hash_ret table_move(
+        struct ilka_hash *ht,
+        const struct hash_table *table,
+        struct hash_key *key,
+        ilka_off_t value)
+{
+    size_t start = key_hash(key) % table->cap;
+    struct table_window window = table_write_window(ht, table, start);
+
+    for (size_t i = 0; i < probe_window; ++i) {
+        struct hash_bucket *bucket = table_window_bucket(&window, i);
+
+        struct ilka_hash_ret ret = bucket_move(ht, bucket, key, value);
+        ilka_log("hash.table.mov", "table=%p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
+                (void *) table, (void *) *((uint64_t *) key->data), (void *) value,
+                (void *) bucket, ret.code, (void *) ret.off);
+
+        if (ret.code == ret_resize) break;
+        if (ret.code == ret_skip) continue;
+        return ret;
+    }
+
+    struct table_ret ret = table_move_window(ht, table, start, probe_window);
+    if (ret.code == ret_err) return make_ret(ret_err, 0);
+    if (ret.table) return table_move(ht, ret.table, key, value);
+
+    ret = table_resize(ht, table, start);
+    if (ret.code == ret_err) return make_ret(ret_err, 0);
+    return table_move(ht, ret.table, key, value);
 }

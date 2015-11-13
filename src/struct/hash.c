@@ -94,6 +94,9 @@ static enum ret_code check_key(const void *key, size_t key_len)
 
 static enum ret_code check_value(const char *name, ilka_off_t value)
 {
+    // Required to disambiguate return values (not-there vs there but wrong
+    // value) and the value 0 is used internally to determined whether a bucket
+    // was set or not.
     if (!value) {
         ilka_fail("invalid nil value");
         return ret_err;

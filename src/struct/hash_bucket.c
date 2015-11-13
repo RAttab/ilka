@@ -50,6 +50,8 @@ static struct ilka_hash_ret bucket_get(
         struct hash_key *key)
 {
     ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
+    ilka_log("hash.bucket.get.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
+
     switch (state_get(old_key)) {
     case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
@@ -61,6 +63,8 @@ static struct ilka_hash_ret bucket_get(
     }
 
     ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
+    ilka_log("hash.bucket.get.val", "bucket=%p, value=%p", (void *) bucket, (void *) old_val);
+
     switch (state_get(old_val)) {
     case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
@@ -109,6 +113,8 @@ static struct ilka_hash_ret bucket_put(
     ilka_off_t new_key;
     ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
     do {
+        ilka_log("hash.bucket.put.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
+
         switch (state_get(old_key)) {
         case state_tomb: return make_ret(ret_skip, 0);
         case state_move: return make_ret(ret_resize, 0);
@@ -137,6 +143,8 @@ static struct ilka_hash_ret bucket_put(
     ilka_off_t new_val;
     ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
     do {
+        ilka_log("hash.bucket.put.val", "bucket=%p, value=%p", (void *) bucket, (void *) old_val);
+
         switch (state_get(old_val)) {
         case state_tomb: return make_ret(ret_skip, 0);
         case state_move: return make_ret(ret_resize, 0);
@@ -158,6 +166,8 @@ static struct ilka_hash_ret bucket_xchg(
         ilka_off_t value)
 {
     ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
+    ilka_log("hash.bucket.xch.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
+
     switch (state_get(old_key)) {
     case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
@@ -173,6 +183,8 @@ static struct ilka_hash_ret bucket_xchg(
     ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
     ilka_off_t clean_val = state_clear(old_val);
     do {
+        ilka_log("hash.bucket.xch.val", "bucket=%p, value=%p", (void *) bucket, (void *) old_val);
+
         switch (state_get(old_val)) {
         case state_nil: return make_ret(ret_skip, 0);
         case state_tomb: return make_ret(ret_skip, 0);
@@ -199,6 +211,8 @@ static struct ilka_hash_ret bucket_del(
         ilka_off_t expected)
 {
     ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
+    ilka_log("hash.bucket.del.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
+
     switch (state_get(old_key)) {
     case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
@@ -213,6 +227,8 @@ static struct ilka_hash_ret bucket_del(
     ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
     ilka_off_t clean_val = state_clear(old_val);
     do {
+        ilka_log("hash.bucket.del.val", "bucket=%p, value=%p", (void *) bucket, (void *) old_val);
+
         switch(state_get(old_val)) {
         case state_nil: return make_ret(ret_skip, 0);
         case state_tomb: return make_ret(ret_skip, 0);
@@ -242,6 +258,8 @@ static bool bucket_lock(struct ilka_hash *ht, struct hash_bucket *bucket)
     ilka_off_t new_key;
     ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
     do {
+        ilka_log("hash.bucket.lck.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
+
         switch (state_get(old_key)) {
         case state_tomb: return false;
         case state_move: new_key = old_key; goto break_key_lock;
@@ -258,6 +276,8 @@ static bool bucket_lock(struct ilka_hash *ht, struct hash_bucket *bucket)
     ilka_off_t new_val;
     ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
     do {
+        ilka_log("hash.bucket.lck.val", "bucket=%p, value=%p", (void *) bucket, (void *) old_val);
+
         switch (state_get(old_val)) {
         case state_tomb: return false;
         case state_move: new_val = old_val; goto break_val_lock;
@@ -280,4 +300,85 @@ static bool bucket_lock(struct ilka_hash *ht, struct hash_bucket *bucket)
     ilka_assert(key_state == val_state,
             "unmatched state for key and val: %d != %d", key_state, val_state);
     return val_state == state_move;
+}
+
+static struct ilka_hash_ret bucket_move(
+        struct ilka_hash *ht,
+        struct hash_bucket *bucket,
+        struct hash_key *key,
+        ilka_off_t value)
+{
+    ilka_assert(key->off, "invalid nil offset while moving a bucket");
+
+    ilka_off_t new_key;
+    ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
+    do {
+        ilka_log("hash.bucket.mov.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
+
+        switch (state_get(old_key)) {
+        case state_move: return make_ret(ret_resize, 0);
+
+        case state_set:
+            if (!key_check(ht, state_clear(old_key), key))
+                return make_ret(ret_skip, 0);
+            goto break_key;
+
+        case state_nil:
+            ilka_assert(key->off, "invalid nil key offset");
+            new_key = state_trans(key->off, state_set);
+            break;
+
+        case state_tomb:
+
+            // We need to check tombstones for our offset to move in case
+            // another thread is helping out with the move and that the bucket
+            // got tombstoned during or after the move.
+            if (key->off != state_clear(old_key)) return make_ret(ret_skip, 0);
+
+            // If our key is tomb-ed then we're in one of two possible
+            // scenarios:
+            //
+            //   1. The table is being resized while we're trying to move into
+            //      it.
+            //
+            //   2. Another thread finished up the move and another op (del or
+            //      resize) tomb-ed the key.
+            //
+            // We can disambiguate the two scenarios by checking whether the
+            // value contains something other then 0. If it does then we know
+            // that, at some point, both key and value were set in the table and
+            // we're therefore in scenario 2 and the move can be considered
+            // completed. Otherwise we're in scenario one and we need to retry
+            // the move.
+
+            if (state_clear(ilka_atomic_load(&bucket->val, morder_relaxed)))
+                return make_ret(ret_ok, 0);
+            return make_ret(ret_resize, 0);
+        }
+
+        // morder_relaxed: we can commit the key with the value set.
+    } while (!ilka_atomic_cmp_xchg(&bucket->key, &old_key, new_key, morder_relaxed));
+  break_key: (void) 0;
+
+    ilka_off_t new_val;
+    ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
+    do {
+        ilka_log("hash.bucket.mov.val", "bucket=%p, value=%p", (void *) bucket, (void *) old_val);
+
+        switch (state_get(old_val)) {
+        case state_set: return make_ret(ret_ok, 0);
+        case state_move: return make_ret(ret_resize, 0);
+        case state_nil: new_val = state_trans(value, state_set); break;
+
+        case state_tomb:
+            // If our key was set but the value is tomb-ed then we're in the
+            // same scenario as if our key was tomb-ed (see above) and the
+            // disambiguation step is the same.
+            return make_ret(state_clear(old_val) ? ret_ok : ret_resize, 0);
+        }
+
+        // morder_release: make sure both writes are commited before moving on.
+    } while (!ilka_atomic_cmp_xchg(&bucket->val, &old_val, new_val, morder_release));
+
+    return make_ret(ret_ok, 0);
 }
