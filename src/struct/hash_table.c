@@ -171,8 +171,11 @@ static struct table_ret table_move(
 
         if (!bucket_lock(ht, src)) continue;
 
-        struct hash_key key = key_from_off(ht, state_clear(src->key));
-        ilka_off_t val = state_clear(src->val);
+        ilka_off_t key_off = ilka_atomic_load(&src->key, morder_relaxed);
+        struct hash_key key = key_from_off(ht, state_clear(key_off));
+
+        ilka_off_t val = state_clear(ilka_atomic_load(&src->val, morder_relaxed));
+
 
         struct ilka_hash_ret ret = table_put(ht, dst_table, &key, val);
         if (ret.code == ret_err) return (struct table_ret) { ret_err, NULL };

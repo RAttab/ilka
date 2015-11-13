@@ -315,7 +315,7 @@ struct ilka_hash_ret ilka_hash_put(
         table_put(ht, table_read(ht, table_off), &hkey, value);
 
     if (ret.code == ret_ok) meta_update_len(ht, 1);
-
+    if (hkey.off) key_free(ht, hkey.off);
     return ret;
 }
 

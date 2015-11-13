@@ -116,16 +116,11 @@ static struct ilka_hash_ret bucket_put(
         case state_set:
             if (!key_check(ht, state_clear(old_key), key))
                 return make_ret(ret_skip, 0);
+            new_key = 0;
             goto break_key;
 
         case state_nil:
-            if (!key->off) {
-                key_alloc(ht, key);
-
-                // morder_release: make sure the key is committed before it's
-                // published.
-                ilka_atomic_fence(morder_release);
-            }
+            if (!key->off) key_alloc(ht, key);
             if (!key->off) return make_ret(ret_err, 0);
             new_key = state_trans(key->off, state_set);
             break;
@@ -134,6 +129,10 @@ static struct ilka_hash_ret bucket_put(
         // morder_relaxed: we can commit the key with the value set.
     } while (!ilka_atomic_cmp_xchg(&bucket->key, &old_key, new_key, morder_relaxed));
   break_key: (void) 0;
+
+    // We just inserted the key into the table so make sure we don't reuse or
+    // free the copy we made in the region. Could lead to double-free.
+    if (new_key) key->off = 0;
 
     ilka_off_t new_val;
     ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
@@ -270,7 +269,7 @@ static bool bucket_lock(struct ilka_hash *ht, struct hash_bucket *bucket)
     } while (!ilka_atomic_cmp_xchg(&bucket->val, &old_val, new_val, morder_release));
   break_val_lock: (void) 0;
 
-    enum state val_state = state_get(new_key);
+    enum state val_state = state_get(new_val);
     if (key_state == state_move && val_state == state_tomb) {
         // morder_relaxed: this is not a linearlization point and mostly just
         // bookeeping so no ordering guarantees are required.

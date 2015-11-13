@@ -55,6 +55,9 @@ static ilka_off_t key_alloc(struct ilka_hash *ht, struct hash_key *key)
     *p = key->len;
     memcpy(p + 1, key->data, key->len);
 
+    // morder_release: make sure the key is committed before it's published.
+    ilka_atomic_fence(morder_release);
+
     return key->off;
 }
 

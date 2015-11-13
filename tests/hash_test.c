@@ -11,19 +11,19 @@
 // -----------------------------------------------------------------------------
 
 static void _check_ret(
-        const char *cmd, struct ilka_hash_ret ret, bool code, ilka_off_t off)
+        const char *cmd, struct ilka_hash_ret ret, uint64_t *key, bool code, ilka_off_t off)
 {
-    ilka_assert(ret.code >= 0, "%s -> hash op raised an error", cmd);
+    ilka_assert(ret.code >= 0, "%s for %p -> hash op raised an error", cmd, (void *) *key);
 
     if (ret.code)
-        ilka_assert(!code, "%s -> code mismatch: %d != %d", cmd, ret.code, code);
-    else ilka_assert(code, "%s -> code mismatch: %d != %d", cmd, ret.code, code);
+        ilka_assert(!code, "%s for %p -> code mismatch: %d != %d", cmd, (void *) *key, ret.code, code);
+    else ilka_assert(code, "%s for %p -> code mismatch: %d != %d", cmd, (void *) *key, ret.code, code);
 
-    ilka_assert(ret.off == off, "%s -> off mismatch: %lu != %lu", cmd, ret.off, off);
+    ilka_assert(ret.off == off, "%s for %p -> off mismatch: %lu != %lu", cmd, (void *) *key, ret.off, off);
 }
 
-#define check_ret(cmd, code, off) \
-    _check_ret(ilka_stringify(__LINE__) ":" #cmd, cmd, code, off)
+#define check_ret(cmd, key, code, off)                                  \
+    _check_ret(ilka_stringify(__LINE__) ":" #cmd, cmd, key, code, off)
 
 
 // -----------------------------------------------------------------------------
@@ -55,32 +55,36 @@ START_TEST(basic_test_st)
 
     for (size_t round = 0; round < 8; ++round) {
         for (size_t i = 0; i < key_count; ++i) {
-            check_ret(ilka_hash_get(h0, &keys[i], klen), false, 0);
-            check_ret(ilka_hash_del(h0, &keys[i], klen), false, 0);
-            check_ret(ilka_hash_xchg(h0, &keys[i], klen, 10), false, 0);
+            uint64_t *k = &keys[i];
 
-            check_ret(ilka_hash_put(h0, &keys[i], klen, 10), true, 0);
-            check_ret(ilka_hash_put(h1, &keys[i], klen, 100), false, 10);
+            check_ret(ilka_hash_get(h0, k, klen), k, false, 0);
+            check_ret(ilka_hash_del(h0, k, klen), k, false, 0);
+            check_ret(ilka_hash_xchg(h0, k, klen, 10), k, false, 0);
 
-            check_ret(ilka_hash_get(h0, &keys[i], klen), true, 10);
-            check_ret(ilka_hash_get(h1, &keys[i], klen), true, 10);
+            check_ret(ilka_hash_put(h0, k, klen, 10), k, true, 0);
+            check_ret(ilka_hash_put(h1, k, klen, 100), k, false, 10);
 
-            check_ret(ilka_hash_xchg(h0, &keys[i], klen, 20), true, 10);
-            check_ret(ilka_hash_cmp_xchg(h0, &keys[i], klen, 10, 30), false, 20);
-            check_ret(ilka_hash_cmp_xchg(h0, &keys[i], klen, 20, 40), true, 20);
+            check_ret(ilka_hash_get(h0, k, klen), k, true, 10);
+            check_ret(ilka_hash_get(h1, k, klen), k, true, 10);
+
+            check_ret(ilka_hash_xchg(h0, k, klen, 20), k, true, 10);
+            check_ret(ilka_hash_cmp_xchg(h0, k, klen, 10, 30), k, false, 20);
+            check_ret(ilka_hash_cmp_xchg(h0, k, klen, 20, 40), k, true, 20);
         }
 
         ck_assert_int_eq(ilka_hash_len(h0), key_count);
         for (size_t i = 0; i < key_count; ++i)
-            check_ret(ilka_hash_get(h1, &keys[i], klen), true, 40);
+            check_ret(ilka_hash_get(h1, &keys[i], klen), &keys[i], true, 40);
 
         for (size_t i = 0; i < key_count; ++i) {
-            check_ret(ilka_hash_cmp_del(h0, &keys[i], klen, 10), false, 40);
-            check_ret(ilka_hash_cmp_del(h0, &keys[i], klen, 40), true, 40);
+            uint64_t *k = &keys[i];
 
-            check_ret(ilka_hash_get(h0, &keys[i], klen), false, 0);
-            check_ret(ilka_hash_del(h0, &keys[i], klen), false, 0);
-            check_ret(ilka_hash_xchg(h0, &keys[i], klen, 10), false, 0);
+            check_ret(ilka_hash_cmp_del(h0, k, klen, 10), k, false, 40);
+            check_ret(ilka_hash_cmp_del(h0, k, klen, 40), k, true, 40);
+
+            check_ret(ilka_hash_get(h0, k, klen), k, false, 0);
+            check_ret(ilka_hash_del(h0, k, klen), k, false, 0);
+            check_ret(ilka_hash_xchg(h0, k, klen, 10), k, false, 0);
         }
 
     }
@@ -121,19 +125,19 @@ void run_split_test(size_t id, void *data)
         ilka_epoch_t epoch = ilka_enter(t->r);
 
         for (size_t i = 0; i < nkey; ++i)
-            check_ret(ilka_hash_get(t->h, &keys[i], klen), false, 0);
+            check_ret(ilka_hash_get(t->h, &keys[i], klen), &keys[i], false, 0);
 
         for (size_t i = 0; i < nkey; ++i)
-            check_ret(ilka_hash_put(t->h, &keys[i], klen, 10), true, 0);
+            check_ret(ilka_hash_put(t->h, &keys[i], klen, 10), &keys[i], true, 0);
 
         for (size_t i = 0; i < nkey; ++i)
-            check_ret(ilka_hash_get(t->h, &keys[i], klen), true, 10);
+            check_ret(ilka_hash_get(t->h, &keys[i], klen), &keys[i], true, 10);
 
         for (size_t i = 0; i < nkey; ++i)
-            check_ret(ilka_hash_xchg(t->h, &keys[i], klen, 20), true, 10);
+            check_ret(ilka_hash_xchg(t->h, &keys[i], klen, 20), &keys[i], true, 10);
 
         for (size_t i = 0; i < nkey; ++i)
-            check_ret(ilka_hash_del(t->h, &keys[i], klen), true, 20);
+            check_ret(ilka_hash_del(t->h, &keys[i], klen), &keys[i], true, 20);
 
         ilka_exit(t->r, epoch);
     }
