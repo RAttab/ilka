@@ -21,10 +21,10 @@ void ilka_abort()
 void ilka_perror(struct ilka_error *err)
 {
     if (!err->errno_)
-        printf("%s:%d: %s\n", err->file, err->line, err->msg);
+        printf("<%lu> %s:%d: %s\n", ilka_tid(), err->file, err->line, err->msg);
     else {
-        printf("%s:%d: %s - %s(%d)\n",
-                err->file, err->line, err->msg,
+        printf("<%lu> %s:%d: %s - %s(%d)\n",
+                ilka_tid(), err->file, err->line, err->msg,
                 strerror(err->errno_), err->errno_);
     }
 }
