@@ -9,7 +9,7 @@
 // utils
 // -----------------------------------------------------------------------------
 
-static size_t ring_size = 1024;
+static size_t ring_size = 1 << 12;
 
 static size_t tick_inc()
 {
@@ -148,7 +148,7 @@ static void ring_dump()
 // log
 // -----------------------------------------------------------------------------
 
-void ilka_log(const char *title, const char *fmt, ...)
+void ilka_log_impl(const char *title, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);

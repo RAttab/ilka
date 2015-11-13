@@ -140,7 +140,7 @@ static void prof_print(
     size_t i = snprintf(buf, sizeof(buf),
             "%s%-40s %8lu (%10.2f) ", prefix, title, hits, hit_ratio);
     i += ilka_print_elapsed(buf + i, sizeof(buf) - i, latency);
-    ilka_log("prof", "%s (%6.2f%%)", buf, elapsed_pct * 100);
+    printf("%s (%6.2f%%)", buf, elapsed_pct * 100);
 }
 
 void ilka_prof_dump()
