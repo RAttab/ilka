@@ -31,12 +31,6 @@ static inline ilka_off_t state_trans(ilka_off_t v, enum state s)
 // -----------------------------------------------------------------------------
 //
 // \todo: This code needs a review of the morder.
-//
-// \todo: we should return ret_stop if we observe BOTH key and val to nil.
-//        Otherwise, bucket_put returns ret_skip if it detects a half-entered
-//        key which means that we a bucket_put could terminate and not be
-//        immediately available to get subsequent hash_get or hash_del op due to
-//        a prior bucket_put operation having not completed.
 
 struct ilka_packed hash_bucket
 {
