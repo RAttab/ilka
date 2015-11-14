@@ -184,13 +184,87 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// overlap test
+// -----------------------------------------------------------------------------
+
+void run_overlap_test(size_t id, void *data)
+{
+    (void) id;
+    struct hash_test *t = data;
+
+    enum { nkey = 1, klen = sizeof(uint64_t) };
+    uint64_t keys[nkey];
+
+    for (size_t i = 0; i < nkey; ++i) keys[i] = 1UL << 32 | i;
+
+    for (size_t run = 0; run < t->runs * 3; ++run) {
+        ilka_epoch_t epoch = ilka_enter(t->r);
+
+        for (size_t i = 0; i < nkey; ++i) {
+            uint64_t *k = &keys[i];
+            struct ilka_hash_ret ret = ilka_hash_get(t->h, k, klen);;
+
+            ilka_off_t old;
+
+            do {
+                ilka_assert(ret.code >= 0, "unexpected error");
+
+                ilka_log("test.attempt", "%p", (void *) ret.off);
+                old = ret.code;
+
+                switch (ret.off) {
+                case 0:
+                    ret = ilka_hash_put(t->h, k, klen, 1); break;
+                    if (!ret.code) ilka_assert(ret.off == 0, "invalid offset: %p", (void *) ret.off);
+
+                case 1:
+                    ret = ilka_hash_cmp_xchg(t->h, k, klen, 1, 2); break;
+                    if (!ret.code) ilka_assert(ret.off == 1, "invalid offset: %p", (void *) ret.off);
+
+                case 2:
+                    ret = ilka_hash_cmp_del(t->h, k, klen, 2); break;
+                    if (!ret.code) ilka_assert(ret.off == 2, "invalid offset: %p", (void *) ret.off);
+
+                default:
+                    ilka_assert(false, "unexpected value: %p", (void *) ret.off);
+                }
+            } while (ret.code);
+
+            ilka_log("test.success", "%p", (void *) old);
+        }
+
+        ilka_exit(t->r, epoch);
+    }
+}
+
+
+START_TEST(overlap_test_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+    struct ilka_hash *h = ilka_hash_alloc(r);
+
+    struct hash_test data = { .r = r, .h = h, .runs = 1000 };
+    ilka_run_threads(run_overlap_test, &data);
+
+    ilka_hash_iterate(h, fn_print, NULL);
+    ilka_assert(!ilka_hash_len(h), "invalid non-nil len");
+
+    ilka_hash_free(h);
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
 
 void make_suite(Suite *s)
 {
     ilka_tc(s, basic_test_st, true);
-    ilka_tc(s, split_test_mt, false);
+    ilka_tc(s, split_test_mt, true);
+    ilka_tc(s, overlap_test_mt, true);
 }
 
 int main(void)
