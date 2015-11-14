@@ -311,6 +311,31 @@ static struct ilka_hash_ret table_get(
     return make_ret(ret_stop, 0);
 }
 
+static int table_iterate(
+        struct ilka_hash *ht,
+        const struct hash_table *table,
+        ilka_hash_fn_t fn,
+        void *data)
+{
+    for (size_t i = 0; i < table->cap; ++i) {
+        const struct hash_bucket *bucket = &table->buckets[i];
+
+        int ret = bucket_iterate(ht, bucket, fn, data);
+        ilka_log("hash.table.itr", "table=%p, bucket=%p, ret=%d",
+                (void *) table, (void *) bucket, ret);
+
+        if (ret == ret_skip) continue;
+        if (ret == ret_resize) break;
+        if (ret != ret_ok) return ret;
+    }
+
+    struct table_ret ret = table_move_window(ht, table, 0, table->cap);
+    if (ret.code == ret_err) return ret_err;
+    if (ret.table) return table_iterate(ht, ret.table, fn, data);
+
+    return ret_ok;
+}
+
 static struct ilka_hash_ret table_put(
         struct ilka_hash *ht,
         const struct hash_table *table,

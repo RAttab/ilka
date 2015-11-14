@@ -26,6 +26,26 @@ static void _check_ret(
     _check_ret(ilka_stringify(__LINE__) ":" #cmd, cmd, key, code, off)
 
 
+int fn_count(void *data, const void *key, size_t key_len, ilka_off_t value)
+{
+    (void) key, (void) key_len, (void) value;
+
+    size_t *count = data;
+    (*count)++;
+
+    return 0;
+}
+
+int fn_print(void *data, const void *key, size_t key_len, ilka_off_t value)
+{
+    (void) data, (void) key_len;
+
+    ilka_log("test.itr.print", "%lu -> %p", *((uint64_t *) key), (void *) value);
+
+    return 0;
+}
+
+
 // -----------------------------------------------------------------------------
 // basics
 // -----------------------------------------------------------------------------
@@ -75,6 +95,11 @@ START_TEST(basic_test_st)
         ck_assert_int_eq(ilka_hash_len(h0), key_count);
         for (size_t i = 0; i < key_count; ++i)
             check_ret(ilka_hash_get(h1, &keys[i], klen), &keys[i], true, 40);
+
+        size_t count = 0;
+        int ret = ilka_hash_iterate(h1, fn_count, &count);
+        ck_assert_int_eq(ret, 0);
+        ck_assert_int_eq(count, ilka_hash_len(h0));
 
         for (size_t i = 0; i < key_count; ++i) {
             uint64_t *k = &keys[i];

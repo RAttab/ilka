@@ -304,6 +304,14 @@ struct ilka_hash_ret ilka_hash_get(
     return table_get(ht, table_read(ht, table_off), &hkey);
 }
 
+int ilka_hash_iterate(struct ilka_hash *ht, ilka_hash_fn_t fn, void *data)
+{
+    ilka_off_t table_off = ilka_list_head(ht->tables);
+    if (!table_off) return ret_ok;
+
+    return table_iterate(ht, table_read(ht, table_off), fn, data);
+}
+
 struct ilka_hash_ret ilka_hash_put(
         struct ilka_hash *ht, const void *key, size_t key_len, ilka_off_t value)
 {

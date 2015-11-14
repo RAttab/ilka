@@ -75,6 +75,39 @@ static struct ilka_hash_ret bucket_get(
     ilka_unreachable();
 }
 
+static int bucket_iterate(
+        struct ilka_hash *ht,
+        const struct hash_bucket *bucket,
+        ilka_hash_fn_t fn,
+        void *data)
+{
+    ilka_off_t old_key = ilka_atomic_load(&bucket->key, morder_relaxed);
+    ilka_log("hash.bucket.itr.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
+
+    switch (state_get(old_key)) {
+    case state_nil: return ret_skip;
+    case state_tomb: return ret_skip;
+    case state_move: return ret_resize;
+    case state_set: break;
+    }
+
+    ilka_off_t old_val = ilka_atomic_load(&bucket->val, morder_relaxed);
+    ilka_log("hash.bucket.itr.val", "bucket=%p, value=%p", (void *) bucket, (void *) old_val);
+
+    switch (state_get(old_val)) {
+    case state_nil: return ret_skip;
+    case state_tomb: return ret_skip;
+    case state_move: return ret_resize;
+    case state_set: break;
+    }
+
+    struct hash_key key = key_from_off(ht, state_clear(old_key));
+    int ret = fn(data, key.data, key.len, state_clear(old_val));
+    if (ret < 0) return ret_err;
+    if (ret > 0) return ret_stop;
+    return ret_ok;
+}
+
 static void bucket_tomb_key(struct ilka_hash *ht, ilka_off_t *val, enum morder mo)
 {
     ilka_off_t new;

@@ -32,8 +32,13 @@ struct ilka_hash_ret
     ilka_off_t off;
 };
 
+typedef int (*ilka_hash_fn_t) (
+        void *data, const void *key, size_t key_len, ilka_off_t value);
+
 struct ilka_hash_ret ilka_hash_get(
         struct ilka_hash *h, const void *key, size_t key_len);
+
+int ilka_hash_iterate(struct ilka_hash *h, ilka_hash_fn_t fn, void *data);
 
 struct ilka_hash_ret ilka_hash_del(
         struct ilka_hash *h, const void *key, size_t key_len);
