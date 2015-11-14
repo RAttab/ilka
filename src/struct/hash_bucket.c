@@ -53,9 +53,14 @@ static struct ilka_hash_ret bucket_get(
     ilka_log("hash.bucket.get.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
 
     switch (state_get(old_key)) {
-    case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
     case state_move: return make_ret(ret_resize, 0);
+
+    case state_nil: {
+        ilka_off_t val = ilka_atomic_load(&bucket->val, morder_relaxed);
+        return make_ret(state_get(val) == state_nil ? ret_stop : ret_skip, 0);
+    }
+
     case state_set:
         if (!key_check(ht, state_clear(old_key), key))
             return make_ret(ret_skip, 0);
@@ -202,9 +207,13 @@ static struct ilka_hash_ret bucket_xchg(
     ilka_log("hash.bucket.xch.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
 
     switch (state_get(old_key)) {
-    case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
     case state_move: return make_ret(ret_resize, 0);
+
+    case state_nil: {
+        ilka_off_t val = ilka_atomic_load(&bucket->val, morder_relaxed);
+        return make_ret(state_get(val) == state_nil ? ret_stop : ret_skip, 0);
+    }
 
     case state_set:
         if (!key_check(ht, state_clear(old_key), key))
@@ -249,9 +258,14 @@ static struct ilka_hash_ret bucket_del(
     ilka_log("hash.bucket.del.key", "bucket=%p, value=%p", (void *) bucket, (void *) old_key);
 
     switch (state_get(old_key)) {
-    case state_nil: return make_ret(ret_skip, 0);
     case state_tomb: return make_ret(ret_skip, 0);
     case state_move: return make_ret(ret_resize, 0);
+
+    case state_nil: {
+        ilka_off_t val = ilka_atomic_load(&bucket->val, morder_relaxed);
+        return make_ret(state_get(val) == state_nil ? ret_stop : ret_skip, 0);
+    }
+
     case state_set:
         if (!key_check(ht, state_clear(old_key), key))
             return make_ret(ret_skip, 0);

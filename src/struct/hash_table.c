@@ -388,6 +388,7 @@ static struct ilka_hash_ret table_xchg(
 
         if (ret.code == ret_skip) continue;
         if (ret.code == ret_resize) break;
+        if (ret.code == ret_stop && !ret.off) break;
         return ret;
     }
 
@@ -417,6 +418,7 @@ static struct ilka_hash_ret table_del(
 
         if (ret.code == ret_skip) continue;
         if (ret.code == ret_resize) break;
+        if (ret.code == ret_stop && !ret.off) break;
         return ret;
     }
 
