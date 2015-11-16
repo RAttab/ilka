@@ -178,7 +178,7 @@ int ilka_list_set(
     if (!check_off(next, "next")) return -1;
 
     ilka_off_t old = 0;
-    return ilka_atomic_cmp_xchg(&node->next, &old, next, morder_release);
+    return ilka_atomic_cmp_xchg(&node->next, &old, next, morder_release) ? 0 : 1;
 }
 
 static bool list_clean(

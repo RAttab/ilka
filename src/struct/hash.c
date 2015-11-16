@@ -155,7 +155,7 @@ static ilka_off_t meta_ensure_table(struct ilka_hash *ht, size_t cap)
 
         int ret = ilka_list_set(ht->tables, &meta->tables, table_off);
         ilka_assert(ret >= 0, "unexpected error from ilka_list_set");
-        if (ret) return table_off;
+        if (!ret) return table_off;
 
         ilka_free(ht->region, table_off, table_len(cap));
     }

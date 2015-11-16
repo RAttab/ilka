@@ -224,7 +224,7 @@ static struct table_ret table_resize(
 
     int lret = ilka_list_set(ht->tables, &cur->next, next);
     ilka_assert(lret >= 0, "unexpected error from ilka_list_set");
-    if (!lret) {
+    if (lret) {
         ilka_free(ht->region, next, table_len(cap));
         return table_move_window(ht, table, start, probe_window);
     }
@@ -237,7 +237,7 @@ static struct table_ret table_resize(
 
     lret = ilka_list_del(ht->tables, &cur->next);
     ilka_assert(lret >= 0, "unexpected error from ilka_list_del");
-    if (lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+    if (!lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
 
     return (struct table_ret) { ret_ok, table_read(ht, next) };
 }
@@ -256,7 +256,7 @@ static bool table_reserve(
 
     int lret = ilka_list_set(ht->tables, &cur->next, next);
     ilka_assert(lret >= 0, "unexpected error from ilka_list_set");
-    if (!lret) {
+    if (lret) {
         ilka_free(ht->region, next, table_len(cap));
 
         next = ilka_list_next(ht->tables, &table->next);
@@ -272,7 +272,7 @@ static bool table_reserve(
 
     lret = ilka_list_del(ht->tables, &cur->next);
     ilka_assert(lret >= 0, "unexpected error from ilka_list_del");
-    if (lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+    if (!lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
 
     return true;
 }

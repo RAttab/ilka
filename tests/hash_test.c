@@ -38,7 +38,7 @@ int fn_count(void *data, const void *key, size_t key_len, ilka_off_t value)
 
 int fn_print(void *data, const void *key, size_t key_len, ilka_off_t value)
 {
-    (void) data, (void) key_len;
+    (void) data, (void) key, (void) key_len, (void) value;
 
     ilka_log("test.itr.print", "%lu -> %p", *((uint64_t *) key), (void *) value);
 
@@ -192,47 +192,41 @@ void run_overlap_test(size_t id, void *data)
     (void) id;
     struct hash_test *t = data;
 
-    enum { nkey = 1, klen = sizeof(uint64_t) };
-    uint64_t keys[nkey];
-
-    for (size_t i = 0; i < nkey; ++i) keys[i] = 1UL << 32 | i;
+    uint64_t key = 1UL << 16;
+    size_t klen = sizeof(key);
 
     for (size_t run = 0; run < t->runs * 3; ++run) {
         ilka_epoch_t epoch = ilka_enter(t->r);
 
-        for (size_t i = 0; i < nkey; ++i) {
-            uint64_t *k = &keys[i];
-            struct ilka_hash_ret ret = ilka_hash_get(t->h, k, klen);;
+        struct ilka_hash_ret ret = ilka_hash_get(t->h, &key, klen);
 
-            ilka_off_t old;
+        ilka_off_t old;
+        (void) old;
+        do {
+            ilka_assert(ret.code >= 0, "unexpected error");
 
-            do {
-                ilka_assert(ret.code >= 0, "unexpected error");
+            ilka_log("test.attempt", "%p", (void *) ret.off);
+            old = ret.code;
 
-                ilka_log("test.attempt", "%p", (void *) ret.off);
-                old = ret.code;
+            switch (ret.off) {
+            case 0:
+                ret = ilka_hash_put(t->h, &key, klen, 1); break;
+                if (!ret.code) ilka_assert(ret.off == 0, "invalid offset: %p", (void *) ret.off);
 
-                switch (ret.off) {
-                case 0:
-                    ret = ilka_hash_put(t->h, k, klen, 1); break;
-                    if (!ret.code) ilka_assert(ret.off == 0, "invalid offset: %p", (void *) ret.off);
+            case 1:
+                ret = ilka_hash_cmp_xchg(t->h, &key, klen, 1, 2); break;
+                if (!ret.code) ilka_assert(ret.off == 1, "invalid offset: %p", (void *) ret.off);
 
-                case 1:
-                    ret = ilka_hash_cmp_xchg(t->h, k, klen, 1, 2); break;
-                    if (!ret.code) ilka_assert(ret.off == 1, "invalid offset: %p", (void *) ret.off);
+            case 2:
+                ret = ilka_hash_cmp_del(t->h, &key, klen, 2); break;
+                if (!ret.code) ilka_assert(ret.off == 2, "invalid offset: %p", (void *) ret.off);
 
-                case 2:
-                    ret = ilka_hash_cmp_del(t->h, k, klen, 2); break;
-                    if (!ret.code) ilka_assert(ret.off == 2, "invalid offset: %p", (void *) ret.off);
+            default:
+                ilka_assert(false, "unexpected value: %p", (void *) ret.off);
+            }
+        } while (ret.code);
 
-                default:
-                    ilka_assert(false, "unexpected value: %p", (void *) ret.off);
-                }
-            } while (ret.code);
-
-            ilka_log("test.success", "%p", (void *) old);
-        }
-
+        ilka_log("test.success", "%p", (void *) old);
         ilka_exit(t->r, epoch);
     }
 }
