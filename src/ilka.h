@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "config.h"
 #include "arch.h"
 #include "compiler.h"
 #include "log.h"

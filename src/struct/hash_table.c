@@ -172,7 +172,7 @@ static struct table_ret table_move_window(
 
         struct ilka_hash_ret ret = table_move(ht, dst_table, &key, val);
 
-        ilka_log("hash.table.mov", "table=%p -> %p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
+        hash_log("hash.table.mov", "table=%p -> %p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
                 (void *) src_table, (void *) dst_table,
                 (void *) *((uint64_t *) key.data), (void *) val,
                 (void *) src,
@@ -294,7 +294,7 @@ static struct ilka_hash_ret table_get(
         const struct hash_bucket *bucket = &table->buckets[index];
 
         struct ilka_hash_ret ret = bucket_get(ht, bucket, key);
-        ilka_log("hash.table.get", "table=%p, key=%p, bucket=%p, ret={ %d, %p }",
+        hash_log("hash.table.get", "table=%p, key=%p, bucket=%p, ret={ %d, %p }",
                 (void *) table, (void *) *((uint64_t *) key->data),
                 (void *) bucket, ret.code, (void *) ret.off);
 
@@ -321,7 +321,7 @@ static int table_iterate(
         const struct hash_bucket *bucket = &table->buckets[i];
 
         int ret = bucket_iterate(ht, bucket, fn, data);
-        ilka_log("hash.table.itr", "table=%p, bucket=%p, ret=%d",
+        hash_log("hash.table.itr", "table=%p, bucket=%p, ret=%d",
                 (void *) table, (void *) bucket, ret);
 
         if (ret == ret_skip) continue;
@@ -349,7 +349,7 @@ static struct ilka_hash_ret table_put(
         struct hash_bucket *bucket = table_window_bucket(&window, i);
 
         struct ilka_hash_ret ret = bucket_put(ht, bucket, key, value);
-        ilka_log("hash.table.put", "table=%p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
+        hash_log("hash.table.put", "table=%p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
                 (void *) table, (void *) *((uint64_t *) key->data), (void *) value,
                 (void *) bucket, ret.code, (void *) ret.off);
 
@@ -381,7 +381,7 @@ static struct ilka_hash_ret table_xchg(
         struct hash_bucket *bucket = table_window_bucket(&window, i);
 
         struct ilka_hash_ret ret = bucket_xchg(ht, bucket, key, expected, value);
-        ilka_log("hash.table.xch", "table=%p, key=%p, val={ %p, %p }, bucket=%p, ret={ %d, %p }",
+        hash_log("hash.table.xch", "table=%p, key=%p, val={ %p, %p }, bucket=%p, ret={ %d, %p }",
                 (void *) table, (void *) *((uint64_t *) key->data),
                 (void *) expected, (void *) value,
                 (void *) bucket, ret.code, (void *) ret.off);
@@ -412,7 +412,7 @@ static struct ilka_hash_ret table_del(
         struct hash_bucket *bucket = table_window_bucket(&window, i);
 
         struct ilka_hash_ret ret = bucket_del(ht, bucket, key, expected);
-        ilka_log("hash.table.del", "table=%p, key=%p, exp=%p, bucket=%p, ret={ %d, %p }",
+        hash_log("hash.table.del", "table=%p, key=%p, exp=%p, bucket=%p, ret={ %d, %p }",
                 (void *) table, (void *) *((uint64_t *) key->data), (void *) expected,
                 (void *) bucket, ret.code, (void *) ret.off);
 
@@ -442,7 +442,7 @@ static struct ilka_hash_ret table_move(
         struct hash_bucket *bucket = table_window_bucket(&window, i);
 
         struct ilka_hash_ret ret = bucket_move(ht, bucket, key, value);
-        ilka_log("hash.table.mov", "table=%p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
+        hash_log("hash.table.mov", "table=%p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
                 (void *) table, (void *) *((uint64_t *) key->data), (void *) value,
                 (void *) bucket, ret.code, (void *) ret.off);
 

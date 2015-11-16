@@ -35,6 +35,14 @@ static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
 static const uint64_t ilka_magic = 0x31906C0FFC1FC856;
 static const uint64_t ilka_version = 1;
 
+#ifndef ILKA_ALLOC_FILL_ON_FREE
+# define ILKA_ALLOC_FILL_ON_FREE 0
+#endif
+
+#ifndef ILKA_ALLOC_FILL_ON_ALLOC
+# define ILKA_ALLOC_FILL_ON_ALLOC 0
+#endif
+
 
 // -----------------------------------------------------------------------------
 // region
@@ -212,11 +220,19 @@ bool ilka_save(struct ilka_region *r)
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 {
-    return alloc_new(&r->alloc, len);
+    ilka_off_t off = alloc_new(&r->alloc, len);
+
+    if (ILKA_ALLOC_FILL_ON_ALLOC && off)
+        memset(ilka_write(r, off, len), 0xFF, len);
+
+    return off;
 }
 
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    if (ILKA_ALLOC_FILL_ON_FREE)
+        memset(ilka_write(r, off, len), 0xFF, len);
+
     alloc_free(&r->alloc, off, len);
 }
 
