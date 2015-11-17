@@ -12,14 +12,15 @@ struct ilka_packed hash_table
     // Must be first for table_read to work properly.
     size_t cap;
 
-    struct ilka_list_node next;
+    ilka_off_t next;
+    uint64_t marked;
 
     // Helps make the struct self-sufficient (aka. no need to pass extra
     // parameters all over the place).
     ilka_off_t table_off;
 
     // Avoids invalidating the table header when updating buckets.
-    uint64_t padding[5];
+    uint64_t padding[4];
 
     struct hash_bucket buckets[];
 };
@@ -51,9 +52,7 @@ static ilka_off_t table_alloc(struct ilka_hash *ht, size_t cap)
 
 static bool table_free(struct ilka_hash *ht, const struct hash_table *table)
 {
-    ilka_off_t next_off = ilka_list_next(ht->tables, &table->next);
-    ilka_assert(next_off != ILKA_LIST_ERROR, "unexpected error from ilka_list_next");
-    if (next_off) {
+    if (ilka_atomic_load(&table->next, morder_relaxed)) {
         ilka_fail("unable to free with concurrent writes");
         return false;
     }
@@ -154,10 +153,8 @@ static struct table_ret table_move_window(
         size_t start,
         size_t len)
 {
-    ilka_off_t next = ilka_list_next(ht->tables, &src_table->next);
-    ilka_assert(next != ILKA_LIST_ERROR, "unexpected error from ilka_list_next");
+    ilka_off_t next = ilka_atomic_load(&src_table->next, morder_relaxed);
     if (!next) return (struct table_ret) { ret_ok, NULL };
-
     const struct hash_table *dst_table = table_read(ht, next);
 
     struct table_window window = table_write_window(ht, src_table, start);
@@ -172,7 +169,7 @@ static struct table_ret table_move_window(
 
         struct ilka_hash_ret ret = table_move(ht, dst_table, &key, val);
 
-        hash_log("hash.table.mov", "table=%p -> %p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
+        hash_log("hash.table.trn", "table=%p -> %p, key=%p, val=%p, bucket=%p, ret={ %d, %p }",
                 (void *) src_table, (void *) dst_table,
                 (void *) *((uint64_t *) key.data), (void *) val,
                 (void *) src,
@@ -220,24 +217,22 @@ static struct table_ret table_resize(
     ilka_off_t next = table_alloc(ht, cap);
     if (!next) return (struct table_ret) { ret_err, 0 };
 
-    struct hash_table *cur = table_write(ht, table);
+    struct hash_table *wtable = table_write(ht, table);
 
-    int lret = ilka_list_set(ht->tables, &cur->next, next);
-    ilka_assert(lret >= 0, "unexpected error from ilka_list_set");
-    if (lret) {
+    ilka_off_t old_next = 0;
+    if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, next, morder_release)) {
         ilka_free(ht->region, next, table_len(cap));
         return table_move_window(ht, table, start, probe_window);
     }
 
-    struct table_ret tret = table_move_window(ht, table, 0, table->cap);
-    if (tret.code == ret_err) {
+    struct table_ret ret = table_move_window(ht, table, 0, table->cap);
+    if (ret.code == ret_err) {
         // \todo: we need to recover the table... somehow...
-        return tret;
+        return ret;
     }
 
-    lret = ilka_list_del(ht->tables, &cur->next);
-    ilka_assert(lret >= 0, "unexpected error from ilka_list_del");
-    if (!lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+    ilka_atomic_store(&wtable->marked, 1, morder_release);
+    meta_clean_tables(ht);
 
     return (struct table_ret) { ret_ok, table_read(ht, next) };
 }
@@ -247,32 +242,29 @@ static bool table_reserve(
         const struct hash_table *table,
         size_t cap)
 {
-    if (cap <= table->cap) return true;
+    ilka_off_t next = ilka_atomic_load(&table->next, morder_relaxed);
+    if (next) return table_reserve(ht, table_read(ht, next), cap);
 
-    ilka_off_t next = table_alloc(ht, cap);
+    if (cap <= table->cap) return true;
+    next = table_alloc(ht, cap);
     if (!next) return false;
 
-    struct hash_table *cur = table_write(ht, table);
+    struct hash_table *wtable = table_write(ht, table);
 
-    int lret = ilka_list_set(ht->tables, &cur->next, next);
-    ilka_assert(lret >= 0, "unexpected error from ilka_list_set");
-    if (lret) {
+    ilka_off_t old_next = 0;
+    if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, next, morder_release)) {
         ilka_free(ht->region, next, table_len(cap));
-
-        next = ilka_list_next(ht->tables, &table->next);
-        ilka_assert(next != ILKA_LIST_ERROR, "unexpected error from ilka_list_next");
         return table_reserve(ht, table_read(ht, next), cap);
     }
 
-    struct table_ret tret = table_move_window(ht, table, 0, table->cap);
-    if (tret.code == ret_err) {
+    struct table_ret ret = table_move_window(ht, table, 0, table->cap);
+    if (ret.code == ret_err) {
         // \todo: we need to recover the table... somehow...
         return false;
     }
 
-    lret = ilka_list_del(ht->tables, &cur->next);
-    ilka_assert(lret >= 0, "unexpected error from ilka_list_del");
-    if (!lret) ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+    ilka_atomic_store(&wtable->marked, 1, morder_release);
+    meta_clean_tables(ht);
 
     return true;
 }
