@@ -262,14 +262,14 @@ static void * mmap_access(struct ilka_mmap *m, ilka_off_t off, size_t len)
             return ((uint8_t*) node->ptr) + off_rel;
         }
 
-        if (node->next) {
-            off_rel -= rlen;
-            node = ilka_atomic_load(&node->next, morder_relaxed);
-            continue;
+        struct mmap_node *next = ilka_atomic_load(&node->next, morder_relaxed);
+        if (!next) {
+            ilka_fail("out-of-bounds access: %p + %p", (void *) off, (void *) len);
+            ilka_abort();
         }
 
-        ilka_fail("out-of-bounds access: %p + %p", (void *) off, (void *) len);
-        ilka_abort();
+        off_rel -= rlen;
+        node = next;
     }
 }
 

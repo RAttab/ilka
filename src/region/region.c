@@ -172,7 +172,7 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     size_t new_len = old_len + len;
 
     file_grow(r->fd, new_len);
-    mmap_remap(&r->mmap, old_len, new_len);
+    if (!mmap_remap(&r->mmap, old_len, new_len)) goto fail_remap;
 
     // morder_release: ensure that the region is fully grown before publishing
     // the new size.
@@ -181,6 +181,10 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     slock_unlock(&r->lock);
 
     return old_len;
+
+  fail_remap:
+    slock_unlock(&r->lock);
+    return 0;
 }
 
 ilka_off_t ilka_get_root(struct ilka_region *r)
