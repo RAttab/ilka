@@ -250,19 +250,18 @@ static bool table_reserve(
         const struct hash_table *table,
         size_t cap)
 {
-    ilka_off_t next = ilka_atomic_load(&table->next, morder_relaxed);
-    if (next) return table_reserve(ht, table_read(ht, next), cap);
+    ilka_off_t old_next = ilka_atomic_load(&table->next, morder_relaxed);
+    if (old_next) return table_reserve(ht, table_read(ht, old_next), cap);
 
     if (cap <= table->cap) return true;
-    next = table_alloc(ht, cap);
+    ilka_off_t next = table_alloc(ht, cap);
     if (!next) return false;
 
     struct hash_table *wtable = table_write(ht, table);
 
-    ilka_off_t old_next = 0;
     if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, next, morder_release)) {
         ilka_free(ht->region, next, table_len(cap));
-        return table_reserve(ht, table_read(ht, next), cap);
+        return table_reserve(ht, table_read(ht, old_next), cap);
     }
 
     struct table_ret ret = table_move_window(ht, table, 0, table->cap);
