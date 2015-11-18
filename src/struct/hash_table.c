@@ -50,6 +50,11 @@ static ilka_off_t table_alloc(struct ilka_hash *ht, size_t cap)
     return off;
 }
 
+static void table_defer_free(struct ilka_hash *ht, const struct hash_table *table)
+{
+    ilka_defer_free(ht->region, table->table_off, table_len(table->cap));
+}
+
 static bool table_free(struct ilka_hash *ht, const struct hash_table *table)
 {
     if (ilka_atomic_load(&table->next, morder_relaxed)) {
@@ -213,13 +218,15 @@ static struct table_ret table_resize(
         const struct hash_table *table,
         size_t start)
 {
+    ilka_off_t old_next = ilka_atomic_load(&table->next, morder_relaxed);
+    if (old_next) return (struct table_ret) { ret_ok, table_read(ht, old_next) };
+
     size_t cap = table_resize_cap(table, start);
     ilka_off_t next = table_alloc(ht, cap);
     if (!next) return (struct table_ret) { ret_err, 0 };
 
     struct hash_table *wtable = table_write(ht, table);
 
-    ilka_off_t old_next = 0;
     if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, next, morder_release)) {
         ilka_free(ht->region, next, table_len(cap));
         return table_move_window(ht, table, start, probe_window);
@@ -233,6 +240,7 @@ static struct table_ret table_resize(
 
     ilka_atomic_store(&wtable->marked, 1, morder_release);
     meta_clean_tables(ht);
+    table_defer_free(ht, table);
 
     return (struct table_ret) { ret_ok, table_read(ht, next) };
 }
@@ -265,6 +273,7 @@ static bool table_reserve(
 
     ilka_atomic_store(&wtable->marked, 1, morder_release);
     meta_clean_tables(ht);
+    table_defer_free(ht, table);
 
     return true;
 }
