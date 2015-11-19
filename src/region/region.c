@@ -65,7 +65,6 @@ struct ilka_region
     ilka_slock lock;
 
     size_t len;
-    void *start;
 
     struct ilka_mmap mmap;
     struct ilka_persist persist;

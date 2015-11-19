@@ -229,7 +229,7 @@ static struct table_ret table_resize(
 
     if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, next, morder_release)) {
         ilka_free(ht->region, next, table_len(cap));
-        return table_move_window(ht, table, start, probe_window);
+        return (struct table_ret) { ret_ok, table_read(ht, old_next) };
     }
 
     struct table_ret ret = table_move_window(ht, table, 0, table->cap);

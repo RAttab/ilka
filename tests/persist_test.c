@@ -196,7 +196,7 @@ void run_save_test(size_t id, void *data)
 
             size_t off = ilka_get_root(t->r) + id * sizeof(ilka_off_t);
             ilka_off_t *root = ilka_write(t->r, off, sizeof(ilka_off_t));
-            ilka_atomic_store(root, page, morder_relaxed);
+            ilka_atomic_store(root, page, morder_release);
 
             memset(ilka_write(t->r, page, n), 0, n);
 
