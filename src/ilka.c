@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <unistd.h>
+#include <execinfo.h> // backtrace
 
 #include "ilka.h"
 #include "utils/utils.h"

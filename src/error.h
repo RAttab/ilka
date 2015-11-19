@@ -12,6 +12,7 @@
 // -----------------------------------------------------------------------------
 
 #define ILKA_ERR_MSG_CAP 1024UL
+#define ILKA_ERR_BACKTRACE_CAP 256
 
 struct ilka_error
 {
@@ -20,6 +21,9 @@ struct ilka_error
 
     int errno_; // errno can be a macro hence the underscore.
     char msg[ILKA_ERR_MSG_CAP];
+
+    void *backtrace[ILKA_ERR_BACKTRACE_CAP];
+    int backtrace_len;
 };
 
 extern __thread struct ilka_error ilka_err;
