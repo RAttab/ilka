@@ -24,7 +24,8 @@ START_TEST(coalesce_test_st)
     struct ilka_options options = {
         .open = true,
         .create = true,
-        .vma_reserved = n
+        .vma_reserved = n,
+        .mcheck_disabled = true,
     };
     struct ilka_region *r = ilka_open("blah", &options);
 
@@ -91,7 +92,8 @@ START_TEST(access_bench_st_mt)
     struct ilka_options options = {
         .open = true,
         .create = true,
-        .vma_reserved = ILKA_PAGE_SIZE
+        .vma_reserved = ILKA_PAGE_SIZE,
+        .mcheck_disabled = true,
     };
     struct ilka_region *r = ilka_open("blah", &options);
 

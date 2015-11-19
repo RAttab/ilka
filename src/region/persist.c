@@ -157,6 +157,7 @@ static bool persist_save(struct ilka_persist *p)
 
 
     if (!pid) {
+        ilka_mcheck_disable(p->region);
         _persist_save_journal(p, old_marks, ilka_len(p->region));
         _exit(0);
     }

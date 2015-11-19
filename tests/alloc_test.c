@@ -354,7 +354,11 @@ END_TEST
 
 START_TEST(block_test_st)
 {
-    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_options options = {
+        .open = true,
+        .create = true,
+        .mcheck_disabled = true,
+    };
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_test tdata = {
@@ -371,7 +375,11 @@ END_TEST
 
 START_TEST(block_test_mt)
 {
-    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_options options = {
+        .open = true,
+        .create = true,
+        .mcheck_disabled = true,
+    };
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_test tdata = {

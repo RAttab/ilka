@@ -19,6 +19,7 @@
 
 // Private interface.
 static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
+static void ilka_mcheck_disable(struct ilka_region *r);
 
 #include "file.c"
 #include "mmap.c"
@@ -26,6 +27,7 @@ static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
 #include "journal.c"
 #include "persist.c"
 #include "epoch.c"
+#include "mcheck.c"
 
 
 // -----------------------------------------------------------------------------
@@ -41,6 +43,10 @@ static const uint64_t ilka_version = 1;
 
 #ifndef ILKA_ALLOC_FILL_ON_ALLOC
 # define ILKA_ALLOC_FILL_ON_ALLOC 0
+#endif
+
+#ifndef ILKA_MCHECK
+# define ILKA_MCHECK 0
 #endif
 
 
@@ -70,6 +76,8 @@ struct ilka_region
     struct ilka_persist persist;
     struct ilka_alloc alloc;
     struct ilka_epoch epoch;
+
+    struct ilka_mcheck mcheck;
 };
 
 
@@ -100,6 +108,12 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     if ((r->len = file_grow(r->fd, min_size)) == -1UL) goto fail_grow;
     if (!mmap_init(&r->mmap, r->fd, r->len, &r->options)) goto fail_mmap;
     if (!persist_init(&r->persist, r, r->file)) goto fail_persist;
+
+    if (ILKA_MCHECK) {
+        mcheck_init(&r->mcheck);
+        mcheck_alloc_end(&r->mcheck, 0, min_size);
+        if (options->mcheck_disabled) mcheck_disable(&r->mcheck);
+    }
 
     const struct meta * meta = ilka_read(r, 0, sizeof(struct meta));
     if (meta->magic != ilka_magic) {
@@ -147,6 +161,8 @@ bool ilka_close(struct ilka_region *r)
 {
     if (!ilka_save(r)) return false;
 
+    if (ILKA_MCHECK) mcheck_close(&r->mcheck);
+
     epoch_close(&r->epoch);
     persist_close(&r->persist);
 
@@ -179,6 +195,9 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
 
     slock_unlock(&r->lock);
 
+    ilka_log("region.grow", "len=%p, old=%p, new=%p",
+            (void *) len, (void *) old_len, (void *) new_len);
+
     return old_len;
 
   fail_remap:
@@ -205,6 +224,7 @@ static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off)
 
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len);
     return mmap_access(&r->mmap, off, len);
 }
 
@@ -223,7 +243,13 @@ bool ilka_save(struct ilka_region *r)
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 {
+    if (ILKA_MCHECK) mcheck_alloc_begin(&r->mcheck);
+
     ilka_off_t off = alloc_new(&r->alloc, len);
+
+    if (ILKA_MCHECK) mcheck_alloc_end(&r->mcheck, off, len);
+
+    ilka_log("region.alloc", "off=%p, len=%p", (void *) off, (void *) len);
 
     if (ILKA_ALLOC_FILL_ON_ALLOC && off)
         memset(ilka_write(r, off, len), 0xFF, len);
@@ -236,7 +262,13 @@ void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
     if (ILKA_ALLOC_FILL_ON_FREE)
         memset(ilka_write(r, off, len), 0xFF, len);
 
+    ilka_log("region.free", "off=%p, len=%p", (void *) off, (void *) len);
+
+    if (ILKA_MCHECK) mcheck_free_begin(&r->mcheck, off, len);
+
     alloc_free(&r->alloc, off, len);
+
+    if (ILKA_MCHECK) mcheck_free_end(&r->mcheck);
 }
 
 bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
@@ -268,4 +300,14 @@ void ilka_world_stop(struct ilka_region *r)
 void ilka_world_resume(struct ilka_region *r)
 {
     epoch_world_resume(&r->epoch);
+}
+
+
+// -----------------------------------------------------------------------------
+// debug
+// -----------------------------------------------------------------------------
+
+static void ilka_mcheck_disable(struct ilka_region *r)
+{
+    if (ILKA_MCHECK) mcheck_disable(&r->mcheck);
 }

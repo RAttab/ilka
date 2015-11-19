@@ -15,7 +15,11 @@ START_TEST(marks_test_st)
     const char *file = "blah";
     const size_t max_len = 1UL << 20;
 
-    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_options options = {
+        .open = true,
+        .create = true,
+        .mcheck_disabled = true,
+    };
     struct ilka_region *r = ilka_open(file, &options);
 
     ilka_off_t root;
@@ -221,7 +225,11 @@ void run_save_test(size_t id, void *data)
         for (size_t run = 0; run < t->runs; ++run) {
             if (!ilka_save(t->r)) ilka_abort();
 
-            struct ilka_options options = { .open = true, .read_only = true };
+            struct ilka_options options = {
+                .open = true,
+                .read_only = true,
+                .mcheck_disabled = true,
+            };
             struct ilka_region *r = ilka_open(t->file, &options);
 
             ilka_off_t root = ilka_get_root(r);
