@@ -18,6 +18,7 @@
 #define ilka_pure         __attribute__((pure))
 #define ilka_printf(x,y)  __attribute__((format(printf, x, y)))
 #define ilka_malloc       __attribute__((malloc))
+#define ilka_noinline     __attribute__((noinline))
 #define ilka_likely(x)    __builtin_expect(x, 1)
 #define ilka_unlikely(x)  __builtin_expect(x, 0)
 
