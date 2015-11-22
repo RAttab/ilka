@@ -35,12 +35,12 @@ static ilka_off_t _alloc_page_new(
             "page allocation is too small: %lu > %lu", len, alloc_bucket_max_len);
     len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
-    const ilka_off_t *prev = ilka_read(r, prev_off, sizeof(ilka_off_t));
+    const ilka_off_t *prev = ilka_read_sys(r, prev_off, sizeof(ilka_off_t));
     ilka_off_t node_off = *prev;
 
     while (node_off) {
         const struct alloc_page_node *node =
-            ilka_read(r, node_off, sizeof(struct alloc_page_node));
+            ilka_read_sys(r, node_off, sizeof(struct alloc_page_node));
 
         if (node->len < len) {
             prev_off = node_off;
@@ -49,14 +49,14 @@ static ilka_off_t _alloc_page_new(
         }
 
         if (node->len == len) {
-            ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
+            ilka_off_t *wprev = ilka_write_sys(r, prev_off, sizeof(ilka_off_t));
             *wprev = node->next;
             return node->off;
         }
 
         if (node->len > len) {
             struct alloc_page_node *wnode =
-                ilka_write(r, node_off, sizeof(struct alloc_page_node));
+                ilka_write_sys(r, node_off, sizeof(struct alloc_page_node));
 
             wnode->len -= len;
             return wnode->off + wnode->len;
@@ -75,23 +75,23 @@ static void _alloc_page_free(
             "page free is too small: %lu > %lu", len, alloc_bucket_max_len);
     len = ceil_div(len, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
-    const ilka_off_t *prev = ilka_read(r, prev_off, sizeof(ilka_off_t));
+    const ilka_off_t *prev = ilka_read_sys(r, prev_off, sizeof(ilka_off_t));
     ilka_off_t node_off = *prev;
 
     while (node_off) {
         const struct alloc_page_node *node =
-            ilka_read(r, node_off, sizeof(struct alloc_page_node));
+            ilka_read_sys(r, node_off, sizeof(struct alloc_page_node));
 
         if (off + len == node->off && !ilka_is_edge(r, node->off)) {
             struct alloc_page_node *wnode =
-                ilka_write(r, off, sizeof(struct alloc_page_node));
+                ilka_write_sys(r, off, sizeof(struct alloc_page_node));
             *wnode = (struct alloc_page_node) {
                 .next = node->next,
                 .off = off,
                 .len = node->len + len,
             };
 
-            ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
+            ilka_off_t *wprev = ilka_write_sys(r, prev_off, sizeof(ilka_off_t));
             *wprev = off;
 
             return;
@@ -99,12 +99,12 @@ static void _alloc_page_free(
 
         if (node->off + node->len == off && !ilka_is_edge(r, off)) {
             struct alloc_page_node *wnode =
-                ilka_write(r, node_off, sizeof(struct alloc_page_node));
+                ilka_write_sys(r, node_off, sizeof(struct alloc_page_node));
             wnode->len += len;
 
             if (wnode->next) {
                 const struct alloc_page_node *next =
-                    ilka_read(r, wnode->next, sizeof(struct alloc_page_node));
+                    ilka_read_sys(r, wnode->next, sizeof(struct alloc_page_node));
 
                 if (wnode->off + wnode->len == next->off && !ilka_is_edge(r, next->off)) {
                     wnode->len += next->len;
@@ -124,10 +124,10 @@ static void _alloc_page_free(
         break;
     }
 
-    ilka_off_t *wprev = ilka_write(r, prev_off, sizeof(ilka_off_t));
+    ilka_off_t *wprev = ilka_write_sys(r, prev_off, sizeof(ilka_off_t));
 
     struct alloc_page_node *node =
-        ilka_write(r, off, sizeof(struct alloc_page_node));
+        ilka_write_sys(r, off, sizeof(struct alloc_page_node));
     *node = (struct alloc_page_node) {*wprev, off, len};
 
     *wprev = off;
@@ -165,6 +165,7 @@ static bool alloc_init(
 
 static size_t _alloc_bucket(size_t *len)
 {
+    ilka_assert(*len <= ceil_pow2(*len), "unexpected bucket shrink");
     *len = *len < alloc_bucket_min_len ? alloc_bucket_min_len : ceil_pow2(*len);
     return ctz(*len) - ctz(alloc_bucket_min_len);
 }
@@ -189,15 +190,15 @@ static ilka_off_t _alloc_bucket_fill(
     ilka_off_t end = start + (nodes * len);
 
     for (ilka_off_t node = start + len; node + len < end; node += len) {
-        ilka_off_t *pnode = ilka_write(a->region, node, sizeof(ilka_off_t));
+        ilka_off_t *pnode = ilka_write_sys(a->region, node, sizeof(ilka_off_t));
         *pnode = node + len;
     }
 
-    ilka_off_t *last = ilka_write(a->region, end - len, sizeof(ilka_off_t));
+    ilka_off_t *last = ilka_write_sys(a->region, end - len, sizeof(ilka_off_t));
 
-    ilka_off_t head = ar->buckets[bucket];
+    ilka_off_t head = ilka_atomic_load(&ar->buckets[bucket], morder_relaxed);
     do {
-        *last = head;
+        ilka_atomic_store(last, head, morder_relaxed);
 
         // morder_release: ensure that the link list is committed before
         // publishing it.
@@ -216,21 +217,25 @@ static ilka_off_t alloc_new(struct ilka_alloc *a, size_t len)
     }
 
     struct alloc_region *ar =
-        ilka_write(a->region, a->start, sizeof(struct alloc_region));
+        ilka_write_sys(a->region, a->start, sizeof(struct alloc_region));
 
     size_t bucket = _alloc_bucket(&len);
 
-    const ilka_off_t *next = NULL;
-    ilka_off_t head = ar->buckets[bucket];
-
+    ilka_off_t next = 0;
+    ilka_off_t head = ilka_atomic_load(&ar->buckets[bucket], morder_relaxed);
     do {
         if (!head) {
             head = _alloc_bucket_fill(a, ar, len, bucket);
+            next = 0;
             break;
         }
 
-        next = ilka_read(a->region, head, sizeof(ilka_off_t));
-    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, *next, morder_relaxed));
+        const ilka_off_t *node = ilka_read_sys(a->region, head, sizeof(ilka_off_t));
+        next = ilka_atomic_load(node, morder_relaxed);
+
+        // morder_relaxed: allocating doesn't require any writes to the block
+        // and everything is fully dependent on the result of the cas op.
+    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, next, morder_relaxed));
 
     return head;
 }
@@ -245,13 +250,17 @@ static void alloc_free(struct ilka_alloc *a, ilka_off_t off, size_t len)
     }
 
     struct alloc_region *ar =
-        ilka_write(a->region, a->start, sizeof(struct alloc_region));
+        ilka_write_sys(a->region, a->start, sizeof(struct alloc_region));
 
     size_t bucket = _alloc_bucket(&len);
 
-    ilka_off_t head = ar->buckets[bucket];
-    ilka_off_t *node = ilka_write(a->region, off, sizeof(ilka_off_t));
+    ilka_off_t *node = ilka_write_sys(a->region, off, sizeof(ilka_off_t));
+    ilka_off_t head = ilka_atomic_load(&ar->buckets[bucket], morder_relaxed);
+
     do {
-        *node = head;
-    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, off, morder_relaxed));
+        ilka_atomic_store(node, head, morder_relaxed);
+
+        // morder_release: make sure the head and any other user write are
+        // committed before we make the block available again.
+    } while (!ilka_atomic_cmp_xchg(&ar->buckets[bucket], &head, off, morder_release));
 }

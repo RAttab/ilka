@@ -19,6 +19,8 @@
 
 // Private interface.
 static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off);
+const void * ilka_read_sys(struct ilka_region *r, ilka_off_t off, size_t len);
+void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len);
 
 #include "file.c"
 #include "mmap.c"
@@ -77,6 +79,18 @@ struct ilka_region
 // region
 // -----------------------------------------------------------------------------
 
+static const size_t ilka_header_len = sizeof(struct meta) + sizeof(struct alloc_region);
+
+const struct meta * meta_read(struct ilka_region *r)
+{
+    return ilka_read_sys(r, 0, sizeof(struct meta));
+}
+
+struct meta * meta_write(struct ilka_region *r)
+{
+    return ilka_write_sys(r, 0, sizeof(struct meta));
+}
+
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
 {
     journal_recover(file);
@@ -93,7 +107,7 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     r->file = file;
     r->options = *options;
 
-    size_t min_size = sizeof(struct meta) + sizeof(struct alloc_region);
+    size_t min_size = ilka_header_len;
     min_size = ceil_div(min_size, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
 
     if ((r->fd = file_open(file, &r->options)) == -1) goto fail_open;
@@ -101,14 +115,14 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     if (!mmap_init(&r->mmap, r->fd, r->len, &r->options)) goto fail_mmap;
     if (!persist_init(&r->persist, r, r->file)) goto fail_persist;
 
-    const struct meta * meta = ilka_read(r, 0, sizeof(struct meta));
+    const struct meta * meta = meta_read(r);
     if (meta->magic != ilka_magic) {
         if (!r->options.create) {
             ilka_fail("invalid magic for file '%s'", file);
             goto fail_magic;
         }
 
-        struct meta * m = ilka_write(r, 0, sizeof(struct meta));
+        struct meta * m = meta_write(r);
         m->magic = ilka_magic;
         m->version = ilka_version;
         m->alloc = sizeof(struct meta);
@@ -178,7 +192,6 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
     ilka_atomic_store(&r->len, new_len, morder_release);
 
     slock_unlock(&r->lock);
-
     return old_len;
 
   fail_remap:
@@ -188,14 +201,12 @@ ilka_off_t ilka_grow(struct ilka_region *r, size_t len)
 
 ilka_off_t ilka_get_root(struct ilka_region *r)
 {
-    const struct meta *m = ilka_read(r, 0, sizeof(struct meta));
-    return m->root;
+    return meta_read(r)->root;
 }
 
 void ilka_set_root(struct ilka_region *r, ilka_off_t root)
 {
-    struct meta *m = ilka_write(r, 0, sizeof(struct meta));
-    m->root = root;
+    meta_write(r)->root = root;
 }
 
 static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off)
@@ -203,13 +214,28 @@ static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off)
     return mmap_is_edge(&r->mmap, off);
 }
 
+const void * ilka_read_sys(struct ilka_region *r, ilka_off_t off, size_t len)
+{
+    return mmap_access(&r->mmap, off, len);
+}
+
+void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len)
+{
+    void *ptr = mmap_access(&r->mmap, off, len);
+    if (ptr) persist_mark(&r->persist, off, len);
+    return ptr;
+}
+
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    ilka_assert(off >= ilka_header_len, "invalid read offset: %p", (void *) off);
+
     return mmap_access(&r->mmap, off, len);
 }
 
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    ilka_assert(off >= ilka_header_len, "invalid write offset: %p", (void *) off);
 
     void *ptr = mmap_access(&r->mmap, off, len);
     if (ptr) persist_mark(&r->persist, off, len);
@@ -225,6 +251,9 @@ ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 {
     ilka_off_t off = alloc_new(&r->alloc, len);
 
+    ilka_assert(off + len <= ilka_len(r), "invalid alloc offset: %p", (void *) off);
+    ilka_assert(off >= ilka_header_len, "invalid alloc offset: %p", (void *) off);
+
     if (ILKA_ALLOC_FILL_ON_ALLOC && off)
         memset(ilka_write(r, off, len), 0xFF, len);
 
@@ -233,6 +262,9 @@ ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    ilka_assert(off + len <= ilka_len(r), "invalid free offset: %p", (void *) off);
+    ilka_assert(off >= ilka_header_len, "invalid free offset: %p", (void *) off);
+
     if (ILKA_ALLOC_FILL_ON_FREE)
         memset(ilka_write(r, off, len), 0xFF, len);
 

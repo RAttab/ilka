@@ -131,7 +131,7 @@ static bool _journal_write_log(struct ilka_journal *j)
     for (size_t i = 0; i < j->len; ++i) {
         struct journal_node *node = &j->nodes[i];
         if (!_journal_write(fd, node, sizeof(struct journal_node))) goto fail;
-        if (!_journal_write(fd, ilka_read(j->region, node->off, node->len), node->len))
+        if (!_journal_write(fd, ilka_read_sys(j->region, node->off, node->len), node->len))
             goto fail;
     }
 
@@ -174,7 +174,7 @@ static bool _journal_write_region(struct ilka_journal *j)
 
     for (size_t i = 0; i < j->len; ++i) {
         struct journal_node *node = &j->nodes[i];
-        const void *ptr = ilka_read(j->region, node->off, node->len);
+        const void *ptr = ilka_read_sys(j->region, node->off, node->len);
 
         ssize_t ret = pwrite(fd, ptr, node->len, node->off);
         if (ret == -1) {
