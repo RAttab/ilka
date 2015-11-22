@@ -79,6 +79,7 @@ static bool table_free(struct ilka_hash *ht, const struct hash_table *table)
         }
     }
 
+    ilka_free(ht->region, table->table_off, table_len(table->cap));
     return true;
 }
 
@@ -219,17 +220,19 @@ static struct table_ret table_resize(
         size_t start)
 {
     ilka_off_t old_next = ilka_atomic_load(&table->next, morder_relaxed);
-    if (old_next) return (struct table_ret) { ret_ok, table_read(ht, old_next) };
+    if (old_next) return table_move_window(ht, table, start, probe_window);
 
     size_t cap = table_resize_cap(table, start);
-    ilka_off_t next = table_alloc(ht, cap);
-    if (!next) return (struct table_ret) { ret_err, 0 };
+    ilka_off_t new_next = table_alloc(ht, cap);
+    if (!new_next) return (struct table_ret) { ret_err, 0 };
 
     struct hash_table *wtable = table_write(ht, table);
 
-    if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, next, morder_release)) {
-        ilka_free(ht->region, next, table_len(cap));
-        return (struct table_ret) { ret_ok, table_read(ht, old_next) };
+    // morder_release: ensures that the table is fully committed before
+    // publishing it.
+    if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, new_next, morder_release)) {
+        ilka_free(ht->region, new_next, table_len(cap));
+        return table_move_window(ht, table, start, probe_window);
     }
 
     struct table_ret ret = table_move_window(ht, table, 0, table->cap);
@@ -242,7 +245,7 @@ static struct table_ret table_resize(
     meta_clean_tables(ht);
     table_defer_free(ht, table);
 
-    return (struct table_ret) { ret_ok, table_read(ht, next) };
+    return (struct table_ret) { ret_ok, table_read(ht, new_next) };
 }
 
 static bool table_reserve(
@@ -358,11 +361,7 @@ static struct ilka_hash_ret table_put(
         return ret;
     }
 
-    struct table_ret ret = table_move_window(ht, table, start, probe_window);
-    if (ret.code == ret_err) return make_ret(ret_err, 0);
-    if (ret.table) return table_put(ht, ret.table, key, value);
-
-    ret = table_resize(ht, table, start);
+    struct table_ret ret = table_resize(ht, table, start);
     if (ret.code == ret_err) return make_ret(ret_err, 0);
     return table_put(ht, ret.table, key, value);
 }
@@ -451,11 +450,7 @@ static struct ilka_hash_ret table_move(
         return ret;
     }
 
-    struct table_ret ret = table_move_window(ht, table, start, probe_window);
-    if (ret.code == ret_err) return make_ret(ret_err, 0);
-    if (ret.table) return table_move(ht, ret.table, key, value);
-
-    ret = table_resize(ht, table, start);
+    struct table_ret ret = table_resize(ht, table, start);
     if (ret.code == ret_err) return make_ret(ret_err, 0);
     return table_move(ht, ret.table, key, value);
 }
