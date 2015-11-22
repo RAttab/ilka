@@ -15,9 +15,9 @@
 #endif
 
 #ifdef ILKA_LOG
-# define ilka_log(t, f, ...) ilka_log_impl(t, f, __VA_ARGS__)
+# define ilka_log(t, ...) ilka_log_impl(t, __VA_ARGS__)
 #else
-# define ilka_log(t, f, ...) do { (void) t, (void) f; } while (false)
+# define ilka_log(t, ...) do { (void) t; } while (false)
 #endif
 
 void ilka_log_impl(const char *title, const char *fmt, ...) ilka_printf(2, 3);

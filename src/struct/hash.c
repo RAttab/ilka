@@ -66,9 +66,9 @@ struct ilka_hash
 // -----------------------------------------------------------------------------
 
 #ifdef ILKA_HASH_LOG
-# define hash_log(t, f, ...) ilka_log(t, f, __VA_ARGS__)
+# define hash_log(t, ...) ilka_log(t, __VA_ARGS__)
 #else
-# define hash_log(t, f, ...) do { (void) t, (void) f; } while (false)
+# define hash_log(t, ...) do { (void) t; } while (false)
 #endif
 
 

@@ -10,9 +10,9 @@
 
 
 #ifdef ILKA_HASH_BUCKET_LOG
-# define bucket_log(t, f, ...) ilka_log(t, f, __VA_ARGS__)
+# define bucket_log(t, ...) ilka_log(t, __VA_ARGS__)
 #else
-# define bucket_log(t, f, ...) do { (void) t, (void) f; } while (false)
+# define bucket_log(t, ...) do { (void) t; } while (false)
 #endif
 
 // -----------------------------------------------------------------------------
