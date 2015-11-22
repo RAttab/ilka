@@ -30,8 +30,6 @@ static void mcheck_init(struct ilka_mcheck *mcheck)
         ilka_fail_errno("unable mmap mcheck");
         ilka_abort();
     }
-
-    mcheck->backtrace = mmap(0, mcheck_max_len, prot, flags, -1, 0);
 }
 
 static inline void mcheck_check(

@@ -28,6 +28,7 @@ void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len);
 #include "journal.c"
 #include "persist.c"
 #include "epoch.c"
+#include "mcheck.c"
 
 
 // -----------------------------------------------------------------------------
@@ -36,6 +37,10 @@ void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len);
 
 static const uint64_t ilka_magic = 0x31906C0FFC1FC856;
 static const uint64_t ilka_version = 1;
+
+#ifndef ILKA_MCHECK
+# define ILKA_MCHECK 0
+#endif
 
 #ifndef ILKA_ALLOC_FILL_ON_FREE
 # define ILKA_ALLOC_FILL_ON_FREE 0
@@ -72,6 +77,8 @@ struct ilka_region
     struct ilka_persist persist;
     struct ilka_alloc alloc;
     struct ilka_epoch epoch;
+
+    struct ilka_mcheck mcheck;
 };
 
 
@@ -136,6 +143,7 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
 
     if (!alloc_init(&r->alloc, r, meta->alloc)) goto fail_alloc;
     if (!epoch_init(&r->epoch, r)) goto fail_epoch;
+    if (ILKA_MCHECK) mcheck_init(&r->mcheck);
 
     return r;
 
@@ -229,6 +237,7 @@ void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len)
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     ilka_assert(off >= ilka_header_len, "invalid read offset: %p", (void *) off);
+    if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len);
 
     return mmap_access(&r->mmap, off, len);
 }
@@ -236,6 +245,7 @@ const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     ilka_assert(off >= ilka_header_len, "invalid write offset: %p", (void *) off);
+    if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len);
 
     void *ptr = mmap_access(&r->mmap, off, len);
     if (ptr) persist_mark(&r->persist, off, len);
@@ -253,6 +263,7 @@ ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 
     ilka_assert(off + len <= ilka_len(r), "invalid alloc offset: %p", (void *) off);
     ilka_assert(off >= ilka_header_len, "invalid alloc offset: %p", (void *) off);
+    if (ILKA_MCHECK) mcheck_alloc(&r->mcheck, off, len);
 
     if (ILKA_ALLOC_FILL_ON_ALLOC && off)
         memset(ilka_write(r, off, len), 0xFF, len);
@@ -264,6 +275,7 @@ void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     ilka_assert(off + len <= ilka_len(r), "invalid free offset: %p", (void *) off);
     ilka_assert(off >= ilka_header_len, "invalid free offset: %p", (void *) off);
+    if (ILKA_MCHECK) mcheck_free(&r->mcheck, off, len);
 
     if (ILKA_ALLOC_FILL_ON_FREE)
         memset(ilka_write(r, off, len), 0xFF, len);
