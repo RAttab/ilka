@@ -243,7 +243,6 @@ static struct table_ret table_resize(
 
     ilka_atomic_store(&wtable->marked, 1, morder_release);
     meta_clean_tables(ht);
-    table_defer_free(ht, table);
 
     return (struct table_ret) { ret_ok, table_read(ht, new_next) };
 }
@@ -275,7 +274,6 @@ static bool table_reserve(
 
     ilka_atomic_store(&wtable->marked, 1, morder_release);
     meta_clean_tables(ht);
-    table_defer_free(ht, table);
 
     return true;
 }

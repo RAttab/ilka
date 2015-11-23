@@ -210,6 +210,13 @@ static void meta_clean_tables(struct ilka_hash *ht)
 
         if (new_head == old_head) return;
     } while (!ilka_atomic_cmp_xchg(&meta->tables, &old_head, new_head, morder_relaxed));
+
+    ilka_off_t off = old_head;
+    while (off != new_head) {
+        const struct hash_table *table = table_read(ht, off);
+        table_defer_free(ht, table);
+        off = ilka_atomic_load(&table->next, morder_relaxed);
+    }
 }
 
 
