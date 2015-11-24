@@ -39,6 +39,10 @@ static inline void mcheck_check(
         uint8_t value,
         const char *msg)
 {
+    ilka_assert(off + len < mcheck_max_len,
+            "mcheck access outside of max len: %p + %p >= %p",
+            (void *) off, (void *) len, (void *) mcheck_max_len);
+
     bool ok = true;
     for (size_t i = off; i < off + len; ++i)
         ok = ok && mcheck->region[i] == value;
@@ -50,9 +54,9 @@ static inline void mcheck_check(
     size_t bpos = snprintf(buf, blen, "mcheck error (%p, %p): %s\n",
             (void *) off, (void *) len, msg);
 
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = off; i < off + len; ++i) {
         bpos += snprintf(buf + bpos, blen - bpos, "  %p:%d\n",
-                (void *) (off + i), (int) mcheck->region[i]);
+                (void *) i, (int) mcheck->region[i]);
     }
 
     ilka_fail("%s", buf);
