@@ -200,13 +200,8 @@ void run_overlap_test(size_t id, void *data)
 
         struct ilka_hash_ret ret = ilka_hash_get(t->h, &key, klen);
 
-        ilka_off_t old;
-        (void) old;
         do {
             ilka_assert(ret.code >= 0, "unexpected error");
-
-            ilka_log("test.attempt", "%p", (void *) ret.off);
-            old = ret.code;
 
             switch (ret.off) {
             case 0:
@@ -226,7 +221,6 @@ void run_overlap_test(size_t id, void *data)
             }
         } while (ret.code);
 
-        ilka_log("test.success", "%p", (void *) old);
         ilka_exit(t->r, epoch);
     }
 }

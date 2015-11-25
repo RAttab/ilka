@@ -9,7 +9,7 @@
 // utils
 // -----------------------------------------------------------------------------
 
-static size_t ring_size = 1 << 12;
+static size_t ring_size = 1UL << 14;
 
 static size_t tick_inc()
 {

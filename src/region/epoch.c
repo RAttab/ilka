@@ -143,7 +143,7 @@ static void epoch_exit(struct ilka_epoch *e, ilka_epoch_t epoch)
         if (!defers && !count && epoch != new.unpacked.epoch)
             defers = ilka_atomic_xchg(&e->defers[epoch & 0x1], NULL, morder_relaxed);
 
-        // morder_acquire: reads should not be sunk out of the epoch-defined region.
+        // morder_release: reads should not be sunk out of the epoch-defined region.
     } while (!ilka_atomic_cmp_xchg(&e->state.packed, &old.packed, new.packed, morder_release));
 
     while (defers) {
