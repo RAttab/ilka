@@ -28,8 +28,10 @@ struct ilka_options
 // -----------------------------------------------------------------------------
 
 struct ilka_region;
-typedef uint64_t ilka_off_t;
 typedef uint16_t ilka_epoch_t;
+
+typedef uint64_t ilka_off_t;
+enum { ilka_off_bits = 64 - ILKA_MCHECK_TAG_BITS };
 
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
 bool ilka_close(struct ilka_region *r);

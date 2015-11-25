@@ -236,16 +236,18 @@ void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len)
 
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    mcheck_tag_t tag = ILKA_MCHECK ? mcheck_untag(&off) : 0;
     ilka_assert(off >= ilka_header_len, "invalid read offset: %p", (void *) off);
-    if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len);
+    if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len, tag);
 
     return mmap_access(&r->mmap, off, len);
 }
 
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    mcheck_tag_t tag = ILKA_MCHECK ? mcheck_untag(&off) : 0;
     ilka_assert(off >= ilka_header_len, "invalid write offset: %p", (void *) off);
-    if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len);
+    if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len, tag);
 
     void *ptr = mmap_access(&r->mmap, off, len);
     if (ptr) persist_mark(&r->persist, off, len);
@@ -263,7 +265,12 @@ ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 
     ilka_assert(off + len <= ilka_len(r), "invalid alloc offset: %p", (void *) off);
     ilka_assert(off >= ilka_header_len, "invalid alloc offset: %p", (void *) off);
-    if (ILKA_MCHECK) mcheck_alloc(&r->mcheck, off, len);
+
+    if (ILKA_MCHECK) {
+        mcheck_tag_t tag = mcheck_tag_next();
+        mcheck_alloc(&r->mcheck, off, len, tag);
+        off = mcheck_tag(off, tag);
+    }
 
     if (ILKA_ALLOC_FILL_ON_ALLOC && off)
         memset(ilka_write(r, off, len), 0xFF, len);
@@ -273,9 +280,11 @@ ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    mcheck_tag_t tag = ILKA_MCHECK ? mcheck_untag(&off) : 0;
+
     ilka_assert(off + len <= ilka_len(r), "invalid free offset: %p", (void *) off);
     ilka_assert(off >= ilka_header_len, "invalid free offset: %p", (void *) off);
-    if (ILKA_MCHECK) mcheck_free(&r->mcheck, off, len);
+    if (ILKA_MCHECK) mcheck_free(&r->mcheck, off, len, tag);
 
     if (ILKA_ALLOC_FILL_ON_FREE)
         memset(ilka_write(r, off, len), 0xFF, len);

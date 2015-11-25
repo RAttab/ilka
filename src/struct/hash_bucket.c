@@ -27,13 +27,18 @@ enum state
     state_tomb = 3
 };
 
-static inline enum state state_get(ilka_off_t v) { return (v >> 62) & 0x3; }
-static inline ilka_off_t state_clear(ilka_off_t v) { return v & ~(0x3UL << 62); }
+enum {
+    state_bits = 2,
+    state_shift = ilka_off_bits - state_bits
+};
+
+static inline enum state state_get(ilka_off_t v) { return (v >> state_shift) & 0x3; }
+static inline ilka_off_t state_clear(ilka_off_t v) { return v & ~(0x3UL << state_shift); }
 static inline ilka_off_t state_trans(ilka_off_t v, enum state s)
 {
     ilka_assert(state_get(v) < s,
             "invalid state transition: %d -> %d", state_get(v), s);
-    return state_clear(v) | (((ilka_off_t) s) << 62);
+    return state_clear(v) | (((ilka_off_t) s) << state_shift);
 }
 
 

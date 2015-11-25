@@ -8,7 +8,39 @@
 // config
 // -----------------------------------------------------------------------------
 
+#if ILKA_MCHECK_TAG_BITS > 7
+# error ILKA_MCHECK_TAG_BITS > 7
+#endif
+
 static const size_t mcheck_max_len = 1UL << 32;
+static const size_t mcheck_tag_bits = ILKA_MCHECK_TAG_BITS;
+
+
+// -----------------------------------------------------------------------------
+// tags
+// -----------------------------------------------------------------------------
+
+typedef uint8_t mcheck_tag_t;
+
+static inline mcheck_tag_t mcheck_tag_next()
+{
+    static size_t tags = 0;
+
+    mcheck_tag_t tag = ilka_atomic_fetch_add(&tags, 1, morder_relaxed);
+    return tag  & ((1UL << mcheck_tag_bits) - 1);
+}
+
+static inline ilka_off_t mcheck_tag(ilka_off_t off, mcheck_tag_t tag)
+{
+    return off | ((ilka_off_t) tag) << (64 - mcheck_tag_bits);
+}
+
+static inline mcheck_tag_t mcheck_untag(ilka_off_t *off)
+{
+    mcheck_tag_t tag = *off >> (64 - mcheck_tag_bits);
+    *off &= (1UL << (64 - mcheck_tag_bits)) - 1;
+    return tag;
+}
 
 
 // -----------------------------------------------------------------------------
@@ -36,7 +68,7 @@ static inline void mcheck_check(
         struct ilka_mcheck *mcheck,
         ilka_off_t off,
         size_t len,
-        uint8_t value,
+        mcheck_tag_t tag,
         const char *msg)
 {
     ilka_assert(off + len < mcheck_max_len,
@@ -45,14 +77,14 @@ static inline void mcheck_check(
 
     bool ok = true;
     for (size_t i = off; i < off + len; ++i)
-        ok = ok && mcheck->region[i] == value;
+        ok = ok && mcheck->region[i] == tag;
     if (ilka_likely(ok)) return;
 
     size_t blen = len * 16 + 128;
     char *buf = alloca(blen);
 
-    size_t bpos = snprintf(buf, blen, "mcheck error (%p, %p): %s\n",
-            (void *) off, (void *) len, msg);
+    size_t bpos = snprintf(buf, blen, "mcheck error (%p, %p, %d): %s\n",
+            (void *) off, (void *) len, (int) (tag - 1), msg);
 
     for (size_t i = off; i < off + len; ++i) {
         bpos += snprintf(buf + bpos, blen - bpos, "  %p:%d\n",
@@ -64,25 +96,28 @@ static inline void mcheck_check(
 }
 
 static inline void mcheck_set(
-        struct ilka_mcheck *mcheck, ilka_off_t off, size_t len, uint8_t value)
+        struct ilka_mcheck *mcheck, ilka_off_t off, size_t len, mcheck_tag_t tag)
 {
-    memset(mcheck->region + off, value, len);
+    memset(mcheck->region + off, tag, len);
     ilka_atomic_fence(morder_release);
 }
 
-static void mcheck_alloc(struct ilka_mcheck *mcheck, ilka_off_t off, size_t len)
+static void mcheck_alloc(
+        struct ilka_mcheck *mcheck, ilka_off_t off, size_t len, mcheck_tag_t tag)
 {
     mcheck_check(mcheck, off, len, 0, "double-allocation");
-    mcheck_set(mcheck, off, len, 1);
+    mcheck_set(mcheck, off, len, tag + 1);
 }
 
-static void mcheck_free(struct ilka_mcheck *mcheck, ilka_off_t off, size_t len)
+static void mcheck_free(
+        struct ilka_mcheck *mcheck, ilka_off_t off, size_t len, mcheck_tag_t tag)
 {
-    mcheck_check(mcheck, off, len, 1, "double-free");
+    mcheck_check(mcheck, off, len, tag + 1, "double-free");
     mcheck_set(mcheck, off, len, 0);
 }
 
-static void mcheck_access(struct ilka_mcheck *mcheck, ilka_off_t off, size_t len)
+static void mcheck_access(
+        struct ilka_mcheck *mcheck, ilka_off_t off, size_t len, mcheck_tag_t tag)
 {
-    mcheck_check(mcheck, off, len, 1, "access-after-free");
+    mcheck_check(mcheck, off, len, tag + 1, "access-after-free");
 }
