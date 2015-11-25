@@ -8,12 +8,12 @@
 // log
 // -----------------------------------------------------------------------------
 
-
 #ifdef ILKA_HASH_BUCKET_LOG
 # define bucket_log(t, ...) ilka_log(t, __VA_ARGS__)
 #else
 # define bucket_log(t, ...) do { (void) t; } while (false)
 #endif
+
 
 // -----------------------------------------------------------------------------
 // state

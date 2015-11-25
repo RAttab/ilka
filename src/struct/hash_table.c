@@ -228,8 +228,8 @@ static struct table_ret table_resize(
 
     struct hash_table *wtable = table_write(ht, table);
 
-    // morder_release: ensures that the table is fully committed before
-    // publishing it.
+    // morder_release: ensures that the table initialization is fully committed
+    // before publishing it.
     if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, new_next, morder_release)) {
         ilka_free(ht->region, new_next, table_len(cap));
         return table_move_window(ht, table, start, probe_window);
@@ -241,6 +241,8 @@ static struct table_ret table_resize(
         return ret;
     }
 
+    // morder_release: ensures that all buckets have been fully moved before
+    // marking the table for removal.
     ilka_atomic_store(&wtable->marked, 1, morder_release);
     meta_clean_tables(ht);
 
@@ -256,13 +258,15 @@ static bool table_reserve(
     if (old_next) return table_reserve(ht, table_read(ht, old_next), cap);
 
     if (cap <= table->cap) return true;
-    ilka_off_t next = table_alloc(ht, cap);
-    if (!next) return false;
+    ilka_off_t new_next = table_alloc(ht, cap);
+    if (!new_next) return false;
 
     struct hash_table *wtable = table_write(ht, table);
 
-    if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, next, morder_release)) {
-        ilka_free(ht->region, next, table_len(cap));
+    // morder_release: ensures that the table initialization is fully committed
+    // before publishing it.
+    if (!ilka_atomic_cmp_xchg(&wtable->next, &old_next, new_next, morder_release)) {
+        ilka_free(ht->region, new_next, table_len(cap));
         return table_reserve(ht, table_read(ht, old_next), cap);
     }
 
@@ -272,12 +276,13 @@ static bool table_reserve(
         return false;
     }
 
+    // morder_release: ensures that all buckets have been fully moved before
+    // marking the table for removal.
     ilka_atomic_store(&wtable->marked, 1, morder_release);
     meta_clean_tables(ht);
 
     return true;
 }
-
 
 
 // -----------------------------------------------------------------------------
