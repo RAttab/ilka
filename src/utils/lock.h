@@ -21,6 +21,12 @@ inline void slock_lock(ilka_slock *l)
     } while (old || !ilka_atomic_cmp_xchg(l, &old, 1, morder_acquire));
 }
 
+inline bool slock_try_lock(ilka_slock *l)
+{
+    uint64_t old = 0;
+    return ilka_atomic_cmp_xchg(l, &old, 1, morder_acquire);
+}
+
 inline void slock_unlock(ilka_slock *l)
 {
     ilka_atomic_store(l, 0, morder_release);

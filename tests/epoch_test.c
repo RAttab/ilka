@@ -62,7 +62,7 @@ void run_basics_test(size_t id, void *data)
         bool done;
         do {
             done = true;
-            ilka_epoch_t epoch = ilka_enter(t->r);
+            if (!ilka_enter(t->r)) ilka_abort();
 
             for (size_t i = 0; i < t->runs; ++i) {
                 size_t *value = ilka_atomic_load(&t->blocks[i % t->n], morder_relaxed);
@@ -72,7 +72,7 @@ void run_basics_test(size_t id, void *data)
                 ilka_assert(*value, "invalid zero value: %lu", *value);
             }
 
-            ilka_exit(t->r, epoch);
+            ilka_exit(t->r);
         } while (!done);
     }
 }
@@ -139,7 +139,7 @@ void run_world_test(size_t id, void *data)
 
     else {
         for (size_t i = 0; i < t->runs; ++i) {
-            ilka_epoch_t epoch = ilka_enter(t->r);
+            if (!ilka_enter(t->r)) ilka_abort();
 
             size_t i = ilka_rand_range(0, t->n);
             size_t *new = malloc(sizeof(size_t));
@@ -152,11 +152,11 @@ void run_world_test(size_t id, void *data)
                 ilka_defer(t->r, defer_fn, old);
             }
 
-            ilka_exit(t->r, epoch);
+            ilka_exit(t->r);
         }
 
         for (size_t i = 0; i < t->n;  ++i) {
-            ilka_epoch_t epoch = ilka_enter(t->r);
+            if (!ilka_enter(t->r)) ilka_abort();
 
             size_t *old = ilka_atomic_xchg(&t->blocks[i], NULL, morder_release);
 
@@ -165,7 +165,7 @@ void run_world_test(size_t id, void *data)
                 ilka_defer(t->r, defer_fn, old);
             }
 
-            ilka_exit(t->r, epoch);
+            ilka_exit(t->r);
         }
     }
 }
@@ -205,8 +205,10 @@ void run_enter_exit_bench(size_t id, void *data)
 
     struct timespec t0 = ilka_now();
     {
-        for (size_t i = 0; i < t->n; ++i)
-            ilka_exit(t->r, ilka_enter(t->r));
+        for (size_t i = 0; i < t->n; ++i) {
+            ilka_enter(t->r);
+            ilka_exit(t->r);
+        }
     }
     double elapsed = ilka_elapsed(&t0);
 

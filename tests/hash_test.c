@@ -54,7 +54,7 @@ START_TEST(basic_test_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    size_t epoch = ilka_enter(r);
+    if (!ilka_enter(r)) ilka_abort();
 
     struct ilka_hash *h0 = ilka_hash_alloc(r);
     struct ilka_hash *h1 = ilka_hash_open(r, ilka_hash_off(h0));
@@ -118,7 +118,7 @@ START_TEST(basic_test_st)
     ilka_hash_close(h1);
     ilka_hash_free(h0);
 
-    ilka_exit(r, epoch);
+    ilka_exit(r);
     if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
@@ -147,7 +147,7 @@ void run_split_test(size_t id, void *data)
         keys[i] = id << 32 | i;
 
     for (size_t run = 0; run < t->runs; ++run) {
-        ilka_epoch_t epoch = ilka_enter(t->r);
+        if (!ilka_enter(t->r)) ilka_abort();
 
         for (size_t i = 0; i < nkey; ++i)
             check_ret(ilka_hash_get(t->h, &keys[i], klen), &keys[i], false, 0);
@@ -164,7 +164,7 @@ void run_split_test(size_t id, void *data)
         for (size_t i = 0; i < nkey; ++i)
             check_ret(ilka_hash_del(t->h, &keys[i], klen), &keys[i], true, 20);
 
-        ilka_exit(t->r, epoch);
+        ilka_exit(t->r);
     }
 }
 
@@ -196,7 +196,7 @@ void run_overlap_test(size_t id, void *data)
     size_t klen = sizeof(key);
 
     for (size_t run = 0; run < t->runs * 3; ++run) {
-        ilka_epoch_t epoch = ilka_enter(t->r);
+        if (!ilka_enter(t->r)) ilka_abort();
 
         struct ilka_hash_ret ret = ilka_hash_get(t->h, &key, klen);
 
@@ -221,7 +221,7 @@ void run_overlap_test(size_t id, void *data)
             }
         } while (ret.code);
 
-        ilka_exit(t->r, epoch);
+        ilka_exit(t->r);
     }
 }
 

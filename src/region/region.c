@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -297,14 +298,14 @@ bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
     return epoch_defer_free(&r->epoch, off, len);
 }
 
-ilka_epoch_t ilka_enter(struct ilka_region *r)
+bool ilka_enter(struct ilka_region *r)
 {
     return epoch_enter(&r->epoch);
 }
 
-void ilka_exit(struct ilka_region *r, ilka_epoch_t epoch)
+void ilka_exit(struct ilka_region *r)
 {
-    epoch_exit(&r->epoch, epoch);
+    epoch_exit(&r->epoch);
 }
 
 bool ilka_defer(struct ilka_region *r, void (*fn) (void *), void *data)

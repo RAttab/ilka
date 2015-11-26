@@ -28,8 +28,6 @@ struct ilka_options
 // -----------------------------------------------------------------------------
 
 struct ilka_region;
-typedef uint16_t ilka_epoch_t;
-
 typedef uint64_t ilka_off_t;
 enum { ilka_off_bits = 64 - ILKA_MCHECK_TAG_BITS };
 
@@ -51,8 +49,8 @@ ilka_off_t ilka_alloc(struct ilka_region *r, size_t len);
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len);
 bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len);
 
-ilka_epoch_t ilka_enter(struct ilka_region *r);
-void ilka_exit(struct ilka_region *r, ilka_epoch_t h);
+bool ilka_enter(struct ilka_region *r);
+void ilka_exit(struct ilka_region *r);
 bool ilka_defer(struct ilka_region *r, void (*fn) (void *), void *data);
 
 void ilka_world_stop(struct ilka_region *r);

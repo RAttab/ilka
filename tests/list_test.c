@@ -73,7 +73,7 @@ START_TEST(basic_test_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    size_t epoch = ilka_enter(r);
+    if (!ilka_enter(r)) ilka_abort();
 
     ilka_off_t root_off = ilka_alloc(r, sizeof(struct ilka_list_node));
     const struct ilka_list_node *root =
@@ -128,7 +128,7 @@ START_TEST(basic_test_st)
     ilka_list_close(l0);
     ilka_free(r, root_off, sizeof(struct ilka_list_node));
 
-    ilka_exit(r, epoch);
+    ilka_exit(r);
     if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
@@ -199,7 +199,7 @@ void run_del_test(size_t id, void *data)
     struct node *nodes[n] = { 0 };
 
     for (size_t run = 0; run < t->runs; ++run) {
-        ilka_epoch_t epoch = ilka_enter(t->r);
+        if (!ilka_enter(t->r)) ilka_abort();
 
         for (size_t i = 0; i < n; ++i) {
             nodes[i] = node_alloc(t->r, i);
@@ -215,7 +215,7 @@ void run_del_test(size_t id, void *data)
             ilka_defer_free(t->r, nodes[i]->off, sizeof(struct node));
         }
 
-        ilka_exit(t->r, epoch);
+        ilka_exit(t->r);
     }
 }
 

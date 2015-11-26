@@ -190,7 +190,7 @@ void run_save_test(size_t id, void *data)
     if (id) {
         ilka_off_t page;
         {
-            ilka_epoch_t e = ilka_enter(t->r);
+            if (!ilka_enter(t->r)) ilka_abort();
 
             page = ilka_alloc(t->r, n);
 
@@ -200,12 +200,12 @@ void run_save_test(size_t id, void *data)
 
             memset(ilka_write(t->r, page, n), 0, n);
 
-            ilka_exit(t->r, e);
+            ilka_exit(t->r);
         }
 
         uint64_t count = 0;
         do {
-            ilka_epoch_t e = ilka_enter(t->r);
+            if (!ilka_enter(t->r)) ilka_abort();
 
             for (size_t i = 0; i < n / m; ++i) {
                 uint64_t *p = ilka_write(t->r, page + (i * m), m);
@@ -213,7 +213,7 @@ void run_save_test(size_t id, void *data)
             }
 
             count++;
-            ilka_exit(t->r, e);
+            ilka_exit(t->r);
         } while (!ilka_atomic_load(&t->done, morder_relaxed));
 
     }
