@@ -60,6 +60,7 @@ struct epoch_thread * epoch_thread_get(struct ilka_epoch *ep)
     }
 
     thread->ep = ep;
+    pthread_setspecific(ep->key, thread);
 
     {
         slock_lock(&ep->lock);
@@ -93,8 +94,8 @@ void epoch_thread_remove(void *data)
         ep->sentinel->defers[i] = last;
     }
 
-    thread->prev->next = thread->next;
-    thread->next->prev = thread->prev;
+    if (thread->prev) thread->prev->next = thread->next;
+    if (thread->next) thread->next->prev = thread->prev;
     free(thread);
 
     slock_unlock(&ep->lock);
@@ -138,16 +139,21 @@ bool epoch_init(struct ilka_epoch *ep, struct ilka_region *region)
 
 void epoch_close(struct ilka_epoch *ep)
 {
-    ilka_assert(!ep->world_lock, "closing with active threads");
-    ilka_assert(slock_try_lock(&ep->lock), "closing with active threads");
+    ilka_assert(!ep->world_lock, "closing with world stopped");
+    ilka_assert(slock_try_lock(&ep->lock), "closing with lock held");
 
     while (ep->threads) {
         struct epoch_thread *thread = ep->threads;
         ep->threads = thread->next;
 
-        ilka_assert(thread->epoch, "closing with active thread");
-        for (size_t i = 0; i < 2; ++i)
-            ilka_assert(!thread->defers[i], "closing with pending defer work");
+        ilka_assert(!thread->epoch,
+                "closing with thread in region: thread=%p, epoch=%lu",
+                (void *) thread, thread->epoch);
+
+        for (size_t i = 0; i < 2; ++i) {
+            ilka_assert(!thread->defers[i],
+                    "closing with pending defer work: thread=%p", (void *) thread);
+        }
 
         free(thread);
     }
@@ -169,6 +175,7 @@ static void epoch_defer_run(struct ilka_epoch *ep)
     while (thread) {
         size_t epoch = ilka_atomic_load(&thread->epoch, morder_acquire);
         if (epoch && epoch < ep->epoch) return;
+        thread = thread->next;
     }
 
     thread = ep->threads;
@@ -186,6 +193,7 @@ static void epoch_defer_run(struct ilka_epoch *ep)
         }
 
         ilka_atomic_store(&thread->defers[i], 0, morder_release);
+        thread = thread->next;
     }
 
     ilka_atomic_fetch_add(&ep->epoch, 1, morder_release);
@@ -209,6 +217,16 @@ static bool epoch_defer_impl(struct ilka_epoch *ep, struct epoch_defer *node)
 
 static bool epoch_defer(struct ilka_epoch *ep, void (*fn) (void *), void *data)
 {
+    if (!fn) {
+        ilka_fail("invalid nil function pointer");
+        return false;
+    }
+
+    if (!data) {
+        ilka_fail("invalid nil data");
+        return false;
+    }
+
     struct epoch_defer *node = malloc(sizeof(struct epoch_defer));
     if (!node) {
         ilka_fail("out-of-memory for defer node: %lu", sizeof(struct epoch_defer));
@@ -227,6 +245,16 @@ static bool epoch_defer(struct ilka_epoch *ep, void (*fn) (void *), void *data)
 
 static bool epoch_defer_free(struct ilka_epoch *ep, ilka_off_t off, size_t len)
 {
+    if (!off) {
+        ilka_fail("invalid nil offset");
+        return false;
+    }
+
+    if (!len) {
+        ilka_fail("invalid nil length");
+        return false;
+    }
+
     struct epoch_defer *node = malloc(sizeof(struct epoch_defer));
     if (!node) {
         ilka_fail("out-of-memory for defer node: %lu", sizeof(struct epoch_defer));
