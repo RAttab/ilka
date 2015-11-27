@@ -11,7 +11,7 @@
 // -----------------------------------------------------------------------------
 
 #ifndef ILKA_LOG_RING
-# define ILKA_LOG_RING 1
+# define ILKA_LOG_RING 0
 #endif
 
 #ifdef ILKA_LOG
