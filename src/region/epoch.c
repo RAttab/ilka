@@ -94,8 +94,9 @@ void epoch_thread_remove(void *data)
         ep->sentinel->defers[i] = last;
     }
 
-    if (thread->prev) thread->prev->next = thread->next;
     if (thread->next) thread->next->prev = thread->prev;
+    if (thread->prev) thread->prev->next = thread->next;
+    else ep->threads = thread->next;
     free(thread);
 
     slock_unlock(&ep->lock);
