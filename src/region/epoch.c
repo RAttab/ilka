@@ -305,37 +305,37 @@ static bool epoch_enter(struct ilka_epoch *ep)
     struct epoch_thread *thread = epoch_thread_get(ep);
     if (!thread) return false;
 
-    while (true) {
+  restart: (void) 0;
 
-        size_t epoch = ilka_atomic_load(&ep->epoch, morder_relaxed);
-        ilka_atomic_store(&thread->epoch, epoch, morder_relaxed);
+    size_t epoch = ilka_atomic_load(&ep->epoch, morder_relaxed);
+    ilka_atomic_store(&thread->epoch, epoch, morder_relaxed);
 
-        // morder_acq_rel: ensures that our thread is stamped with an epoch
-        // before we read world_lock. Otherwise, if the we check world_lock
-        // prior to stamping the epoch then it would be possible for world_lock
-        // to be set after we read it but before we stamp the epoch which means
-        // that we could enter the epoch after world_stop has returned to the
-        // user.
-        //
-        // We also require epoch_enter to be an acquire op so that no reads from
-        // within the region are hoisted out of the region.
-        ilka_atomic_fence(morder_acq_rel);
+    // morder_acq_rel: ensures that our thread is stamped with an epoch
+    // before we read world_lock. Otherwise, if the we check world_lock
+    // prior to stamping the epoch then it would be possible for world_lock
+    // to be set after we read it but before we stamp the epoch which means
+    // that we could enter the epoch after world_stop has returned to the
+    // user.
+    //
+    // We also require epoch_enter to be an acquire op so that no reads from
+    // within the region are hoisted out of the region.
+    ilka_atomic_fence(morder_acq_rel);
 
-        // it's possible for the global epoch to have switched between our load
-        // and our store so make sure we have the latest version.
-        if (ilka_unlikely(epoch != ilka_atomic_load(&ep->epoch, morder_relaxed)))
-            ilka_atomic_store(&thread->epoch, 0, morder_relaxed);
-
-        // the world lock is on so spin until we resume.
-        else if (ilka_unlikely(ilka_atomic_load(&ep->world_lock, morder_acquire))) {
-            ilka_atomic_store(&thread->epoch, 0, morder_relaxed);
-            while (ilka_atomic_load(&ep->world_lock, morder_acquire));
-        }
-
-        else return true;
+    // it's possible for the global epoch to have switched between our load
+    // and our store so make sure we have the latest version.
+    if (ilka_unlikely(epoch != ilka_atomic_load(&ep->epoch, morder_relaxed))) {
+        ilka_atomic_store(&thread->epoch, 0, morder_relaxed);
+        goto restart;
     }
 
-    ilka_unreachable();
+    // the world lock is on so spin until we resume.
+    if (ilka_unlikely(ilka_atomic_load(&ep->world_lock, morder_acquire))) {
+        ilka_atomic_store(&thread->epoch, 0, morder_relaxed);
+        while (ilka_atomic_load(&ep->world_lock, morder_acquire));
+        goto restart;
+    }
+
+    return true;
 }
 
 static void epoch_exit(struct ilka_epoch *ep)
