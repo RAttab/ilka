@@ -143,7 +143,7 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     }
 
     if (!alloc_init(&r->alloc, r, meta->alloc)) goto fail_alloc;
-    if (!epoch_init(&r->epoch, r)) goto fail_epoch;
+    if (!epoch_init(&r->epoch, r, &r->options)) goto fail_epoch;
     if (ILKA_MCHECK) mcheck_init(&r->mcheck);
 
     return r;

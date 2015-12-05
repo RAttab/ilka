@@ -82,7 +82,11 @@ START_TEST(basics_test_mt)
 {
     enum { n = 10 };
 
-    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_options options = {
+        .open = true,
+        .create = true,
+        .epoch_gc_freq_usec = 1,
+    };
     struct ilka_region *r = ilka_open("blah", &options);
 
     size_t *blocks[n] = { 0 };
@@ -175,7 +179,11 @@ START_TEST(world_test_mt)
 {
     enum { n = 10 };
 
-    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_options options = {
+        .open = true,
+        .create = true,
+        .epoch_gc_freq_usec = 1,
+    };
     struct ilka_region *r = ilka_open("blah", &options);
 
     size_t *blocks[n] = { 0 };
@@ -233,7 +241,11 @@ END_TEST
 
 START_TEST(enter_exit_bench_mt)
 {
-    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_options options = {
+        .open = true,
+        .create = true,
+        .epoch_gc_freq_usec = 1,
+    };
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct epoch_test data = {

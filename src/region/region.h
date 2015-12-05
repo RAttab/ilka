@@ -20,6 +20,8 @@ struct ilka_options
     bool huge_tlb;
     bool populate;
     size_t vma_reserved;
+
+    size_t epoch_gc_freq_usec;
 };
 
 

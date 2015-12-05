@@ -10,6 +10,8 @@
 
 struct epoch_defer
 {
+    size_t origin_tid;
+
     void *data;
     void (*fn) (void *);
 
@@ -41,6 +43,9 @@ struct ilka_epoch
     ilka_slock lock;
     struct epoch_thread *threads;
     struct epoch_thread *sentinel;
+
+    size_t gc_freq_usec;
+    pthread_t gc_thread;
 };
 
 
@@ -104,66 +109,6 @@ void epoch_thread_remove(void *data)
 
 
 // -----------------------------------------------------------------------------
-// basics
-// -----------------------------------------------------------------------------
-
-bool epoch_init(struct ilka_epoch *ep, struct ilka_region *region)
-{
-    memset(ep, 0, sizeof(struct ilka_epoch));
-
-    ep->region = region;
-    ep->epoch = 2;
-
-    if (pthread_key_create(&ep->key, epoch_thread_remove)) {
-        ilka_fail_errno("unable to create pthread key");
-        goto fail_key;
-    }
-
-    ep->sentinel = calloc(1, sizeof(struct epoch_thread));
-    if (!ep->sentinel) {
-        ilka_fail("out-of-memory for epoch sentinel");
-        goto fail_sentinel;
-    }
-    ep->sentinel->ep = ep;
-    ep->threads = ep->sentinel;
-
-    return true;
-
-    free(ep->sentinel);
-  fail_sentinel:
-
-    pthread_key_delete(ep->key);
-  fail_key:
-
-    return false;
-}
-
-void epoch_close(struct ilka_epoch *ep)
-{
-    ilka_assert(!ep->world_lock, "closing with world stopped");
-    ilka_assert(slock_try_lock(&ep->lock), "closing with lock held");
-
-    while (ep->threads) {
-        struct epoch_thread *thread = ep->threads;
-        ep->threads = thread->next;
-
-        ilka_assert(!thread->epoch,
-                "closing with thread in region: thread=%p, epoch=%lu",
-                (void *) thread, thread->epoch);
-
-        for (size_t i = 0; i < 2; ++i) {
-            ilka_assert(!thread->defers[i],
-                    "closing with pending defer work: thread=%p", (void *) thread);
-        }
-
-        free(thread);
-    }
-
-    pthread_key_delete(ep->key);
-}
-
-
-// -----------------------------------------------------------------------------
 // defer
 // -----------------------------------------------------------------------------
 
@@ -217,10 +162,37 @@ static void epoch_defer_run(struct ilka_epoch *ep)
     ilka_atomic_fetch_add(&ep->epoch, 1, morder_release);
 }
 
+static void * epoch_defer_thread(void *data)
+{
+    struct ilka_epoch *ep = data;
+
+    time_t secs = ep->gc_freq_usec / (1000 * 1000);
+    long nanos = (ep->gc_freq_usec % (1000 * 1000)) * 1000;
+
+    while (true) {
+
+        // nanosleep is a pthread cancellation point.
+        struct timespec time = { secs, nanos };
+        while (nanosleep(&time, &time)) {
+            if (errno == EINTR) continue;
+            ilka_fail_errno("unable to nanosleep for %lu", time.tv_nsec);
+        }
+
+        slock_lock(&ep->lock);
+        epoch_defer_run(ep);
+        slock_unlock(&ep->lock);
+    }
+
+    return NULL;
+}
+
+
 static bool epoch_defer_impl(struct ilka_epoch *ep, struct epoch_defer *node)
 {
     struct epoch_thread *thread = epoch_thread_get(ep);
     if (!thread) return false;
+
+    node->origin_tid = ilka_tid();
 
     // morder_relaxed: pushing to a stale epoch is fine because it just means
     // that our node is already obsolete and can therefore be executed
@@ -351,12 +323,6 @@ static void epoch_exit(struct ilka_epoch *ep)
     // We also require that epoch_exit is an overall release op so that no reads
     // from within the region are sunk below the region.
     ilka_atomic_store(&thread->epoch, 0, morder_release);
-
-    // \todo: this is too aggressive. Should find a looser policy.
-    if (slock_try_lock(&ep->lock)) {
-        epoch_defer_run(ep);
-        slock_unlock(&ep->lock);
-    }
 }
 
 
@@ -391,4 +357,92 @@ static void epoch_world_resume(struct ilka_epoch *ep)
     // morder_release: synchronizes with epoch_world_stop to ensure that all ops
     // within the region stay within the region.
     ilka_atomic_fetch_add(&ep->world_lock, -1, morder_release);
+}
+
+
+// -----------------------------------------------------------------------------
+// basics
+// -----------------------------------------------------------------------------
+
+bool epoch_init(
+        struct ilka_epoch *ep,
+        struct ilka_region *region,
+        struct ilka_options *options)
+{
+    memset(ep, 0, sizeof(struct ilka_epoch));
+
+    ep->region = region;
+    ep->epoch = 2;
+
+    ep->gc_freq_usec = options->epoch_gc_freq_usec;
+    if (!ep->gc_freq_usec) ep->gc_freq_usec = 1UL * 1000 * 1000;
+
+    if (pthread_key_create(&ep->key, epoch_thread_remove)) {
+        ilka_fail_errno("unable to create pthread key");
+        goto fail_key;
+    }
+
+    ep->sentinel = calloc(1, sizeof(struct epoch_thread));
+    if (!ep->sentinel) {
+        ilka_fail("out-of-memory for epoch sentinel");
+        goto fail_sentinel;
+    }
+    ep->sentinel->ep = ep;
+    ep->threads = ep->sentinel;
+
+    int err = pthread_create(&ep->gc_thread, NULL, epoch_defer_thread, ep);
+    if (err) {
+        ilka_fail_ierrno(err, "unable to pthread_create the epoch gc_thread");
+        goto fail_thread;
+    }
+
+    return true;
+
+    pthread_cancel(ep->gc_thread);
+    pthread_join(ep->gc_thread, NULL);
+  fail_thread:
+
+    free(ep->sentinel);
+  fail_sentinel:
+
+    pthread_key_delete(ep->key);
+  fail_key:
+
+    return false;
+}
+
+void epoch_close(struct ilka_epoch *ep)
+{
+    int err = pthread_cancel(ep->gc_thread);
+    if (err) {
+        ilka_fail_ierrno(err, "unable to pthread_cancel the epoch gc_thread");
+        ilka_abort();
+    }
+
+    err = pthread_join(ep->gc_thread, NULL);
+    if (err) {
+        ilka_fail_ierrno(err, "unable to pthread_join the epoch gc_thread");
+        ilka_abort();
+    }
+
+    ilka_assert(!ep->world_lock, "closing with world stopped");
+    ilka_assert(slock_try_lock(&ep->lock), "closing with lock held");
+
+    while (ep->threads) {
+        struct epoch_thread *thread = ep->threads;
+        ep->threads = thread->next;
+
+        ilka_assert(!thread->epoch,
+                "closing with thread in region: thread=%p, epoch=%lu",
+                (void *) thread, thread->epoch);
+
+        for (size_t i = 0; i < 2; ++i) {
+            ilka_assert(!thread->defers[i],
+                    "closing with pending defer work: thread=%p", (void *) thread);
+        }
+
+        free(thread);
+    }
+
+    pthread_key_delete(ep->key);
 }
