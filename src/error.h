@@ -50,6 +50,13 @@ void ilka_vfail_errno(const char *file, int line, const char *fmt, ...)
 #define ilka_fail_errno(...)                            \
     ilka_vfail_errno(__FILE__, __LINE__, __VA_ARGS__)
 
+// useful for pthread APIs which return the errno.
+#define ilka_fail_ierrno(err, ...)                              \
+    do {                                                        \
+        errno = err;                                            \
+        ilka_vfail_errno(__FILE__, __LINE__, __VA_ARGS__);      \
+    } while (false)
+
 
 // -----------------------------------------------------------------------------
 // assert
