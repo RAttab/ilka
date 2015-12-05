@@ -375,7 +375,7 @@ bool epoch_init(
     ep->epoch = 2;
 
     ep->gc_freq_usec = options->epoch_gc_freq_usec;
-    if (!ep->gc_freq_usec) ep->gc_freq_usec = 1UL * 1000 * 1000;
+    if (!ep->gc_freq_usec) ep->gc_freq_usec = 1UL * 1000;
 
     if (pthread_key_create(&ep->key, epoch_thread_remove)) {
         ilka_fail_errno("unable to create pthread key");
