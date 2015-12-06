@@ -25,8 +25,8 @@ static const size_t alloc_block_mid_len = 256;
 static const size_t alloc_block_max_len = 2048;
 
 // [  0,    8] -> 1
-// ]  8,  256] -> 16
-// ]256, 2048] -> 3
+// ]  8,  256] -> 16 = 256 / 16
+// ]256, 2048] -> 3  = { 512, 1024, 2048 }
 static const size_t alloc_block_classes = 20;
 
 static size_t alloc_block_class(size_t *len)
@@ -36,7 +36,7 @@ static size_t alloc_block_class(size_t *len)
         return 0;
     }
 
-    // [16, 256] we go by increments of 16 bytes.
+    // ]8, 256] we go by increments of 16 bytes.
     if (*len <= alloc_block_mid_len) {
         size_t class = ceil_div(*len, alloc_block_mid_inc);
         *len = class * alloc_block_mid_inc;
@@ -47,6 +47,25 @@ static size_t alloc_block_class(size_t *len)
     *len = ceil_pow2(*len);
     size_t bits = leading_bit(*len) - leading_bit(alloc_block_mid_len);
     return bits + (alloc_block_mid_len / alloc_block_mid_inc) + 1;
+}
+
+
+// -----------------------------------------------------------------------------
+// tag
+// -----------------------------------------------------------------------------
+
+static const size_t alloc_block_tag_bits = 16;
+
+static ilka_off_t alloc_block_tag(struct alloc_blocks *blocks, ilka_off_t off)
+{
+    ilka_off_t tag = ilka_atomic_fetch_add(&blocks->tags, 1, morder_relaxed);
+    return off | (tag << (64 - alloc_block_tag_bits));
+}
+
+static ilka_off_t alloc_block_untag(ilka_off_t off)
+{
+    ilka_off_t mask = ((1UL << alloc_block_tag_bits) - 1) << (64 - alloc_block_tag_bits);
+    return off & ~mask;
 }
 
 
@@ -84,25 +103,6 @@ static struct alloc_blocks * alloc_block_write(
 {
     ilka_off_t off = alloc_block_index_off(alloc, area, class);
     return ilka_write_sys(alloc->region, off, sizeof(struct alloc_blocks));
-}
-
-
-// -----------------------------------------------------------------------------
-// tag
-// -----------------------------------------------------------------------------
-
-static const size_t alloc_block_tag_bits = 16;
-
-static ilka_off_t alloc_block_tag(struct alloc_blocks *blocks, ilka_off_t off)
-{
-    ilka_off_t tag = ilka_atomic_fetch_add(&blocks->tags, 1, morder_relaxed);
-    return off | (tag << (64 - alloc_block_tag_bits));
-}
-
-static ilka_off_t alloc_block_untag(ilka_off_t off)
-{
-    ilka_off_t mask = ((1UL << alloc_block_tag_bits) - 1) << (64 - alloc_block_tag_bits);
-    return off & ~mask;
 }
 
 
