@@ -268,7 +268,7 @@ ilka_off_t ilka_alloc_in(struct ilka_region *r, size_t len, size_t area)
     ilka_off_t off = alloc_new(&r->alloc, len, area);
 
     ilka_assert(off + len <= ilka_len(r), "invalid alloc offset: %p", (void *) off);
-    ilka_assert(off >= r->header_len, "invalid alloc offset: %p", (void *) off);
+    ilka_assert(!off || off >= r->header_len, "invalid alloc offset: %p", (void *) off);
 
     if (ILKA_MCHECK) {
         mcheck_tag_t tag = mcheck_tag_next();
@@ -293,10 +293,11 @@ void ilka_free_in(struct ilka_region *r, ilka_off_t off, size_t len, size_t area
 
     ilka_assert(off + len <= ilka_len(r), "invalid free offset: %p", (void *) off);
     ilka_assert(off >= r->header_len, "invalid free offset: %p", (void *) off);
-    if (ILKA_MCHECK) mcheck_free(&r->mcheck, off, len, tag);
 
     if (ILKA_ALLOC_FILL_ON_FREE)
         memset(ilka_write(r, off, len), 0xFF, len);
+
+    if (ILKA_MCHECK) mcheck_free(&r->mcheck, off, len, tag);
 
     alloc_free(&r->alloc, off, len, area);
 }

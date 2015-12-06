@@ -72,7 +72,7 @@ static bool alloc_init(
     if (end_off > ILKA_PAGE_SIZE) {
         ilka_off_t off = ilka_grow(region, end_off - ILKA_PAGE_SIZE);
         if (!off) return false;
-        ilka_assert(off != ILKA_PAGE_SIZE,
+        ilka_assert(off == ILKA_PAGE_SIZE,
                 "disjointed allocator region detected: %lu != 4096", off);
     }
 

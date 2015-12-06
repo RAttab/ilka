@@ -45,8 +45,8 @@ static size_t alloc_block_class(size_t *len)
 
     // ]256, 2048] we go by powers of 2.
     *len = ceil_pow2(*len);
-    size_t bits = leading_bit(*len) - leading_bit(alloc_block_mid_len);
-    return bits + (alloc_block_mid_len / alloc_block_mid_inc) + 1;
+    size_t bits = ctz(*len) - ctz(alloc_block_mid_len);
+    return bits + (alloc_block_mid_len / alloc_block_mid_inc);
 }
 
 
@@ -76,7 +76,7 @@ static ilka_off_t alloc_block_untag(ilka_off_t off)
 static inline size_t alloc_block_area_len()
 {
     size_t len = alloc_block_classes * sizeof(struct alloc_blocks);
-    return ceil_div(len, ILKA_CACHE_LINE);
+    return ceil_div(len, ILKA_CACHE_LINE) * ILKA_CACHE_LINE;
 }
 
 static size_t alloc_block_len(struct ilka_alloc *alloc)
@@ -133,15 +133,17 @@ static ilka_off_t alloc_block_fill(
 
     ilka_off_t *last = ilka_write_sys(alloc->region, end - len, sizeof(ilka_off_t));
 
-    ilka_off_t head = ilka_atomic_load(&blocks->head, morder_acquire);
+    // morder_relaxed: not reading the content of the node so no need to
+    // synchronize with anyone.
+    ilka_off_t head = ilka_atomic_load(&blocks->head, morder_relaxed);
     do {
-        ilka_atomic_store(last, head, morder_relaxed);
+        *last = head;
 
         // morder_release: ensure that the link list is committed before
         // publishing it.
     } while(!ilka_atomic_cmp_xchg(&blocks->head, &head, start + len, morder_release));
 
-    return page;
+    return start;
 }
 
 static ilka_off_t alloc_block_new(
@@ -149,7 +151,6 @@ static ilka_off_t alloc_block_new(
 {
     area %= alloc->areas;
     size_t class = alloc_block_class(&len);
-
     struct alloc_blocks *blocks = alloc_block_write(alloc, area, class);
 
     // morder_acquire: synchronizes with alloc_block_free to ensure that the
@@ -159,6 +160,7 @@ static ilka_off_t alloc_block_new(
     do {
         if (!head) {
             head = alloc_block_fill(alloc, blocks, len, area);
+            next = 0;
             break;
         }
 
@@ -178,7 +180,6 @@ static void alloc_block_free(
 {
     area %= alloc->areas;
     size_t class = alloc_block_class(&len);
-
     struct alloc_blocks *blocks = alloc_block_write(alloc, area, class);
     ilka_off_t *node = ilka_write_sys(alloc->region, off, sizeof(ilka_off_t));
 
