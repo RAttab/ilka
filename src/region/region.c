@@ -73,6 +73,7 @@ struct ilka_region
     ilka_slock lock;
 
     size_t len;
+    size_t header_len;
 
     struct ilka_mmap mmap;
     struct ilka_persist persist;
@@ -86,8 +87,6 @@ struct ilka_region
 // -----------------------------------------------------------------------------
 // region
 // -----------------------------------------------------------------------------
-
-static const size_t ilka_header_len = sizeof(struct meta) + sizeof(struct alloc_region);
 
 const struct meta * meta_read(struct ilka_region *r)
 {
@@ -115,11 +114,8 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     r->file = file;
     r->options = *options;
 
-    size_t min_size = ilka_header_len;
-    min_size = ceil_div(min_size, ILKA_PAGE_SIZE) * ILKA_PAGE_SIZE;
-
     if ((r->fd = file_open(file, &r->options)) == -1) goto fail_open;
-    if ((r->len = file_grow(r->fd, min_size)) == -1UL) goto fail_grow;
+    if ((r->len = file_grow(r->fd, ILKA_PAGE_SIZE)) == -1UL) goto fail_grow;
     if (!mmap_init(&r->mmap, r->fd, r->len, &r->options)) goto fail_mmap;
     if (!persist_init(&r->persist, r, r->file)) goto fail_persist;
 
@@ -142,9 +138,11 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
         goto fail_version;
     }
 
-    if (!alloc_init(&r->alloc, r, meta->alloc)) goto fail_alloc;
+    if (!alloc_init(&r->alloc, r, &r->options, meta->alloc)) goto fail_alloc;
     if (!epoch_init(&r->epoch, r, &r->options)) goto fail_epoch;
     if (ILKA_MCHECK) mcheck_init(&r->mcheck);
+
+    r->header_len = alloc_end(&r->alloc);
 
     return r;
 
@@ -238,7 +236,7 @@ void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len)
 const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     mcheck_tag_t tag = ILKA_MCHECK ? mcheck_untag(&off) : 0;
-    ilka_assert(off >= ilka_header_len, "invalid read offset: %p", (void *) off);
+    ilka_assert(off >= r->header_len, "invalid read offset: %p", (void *) off);
     if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len, tag);
 
     return mmap_access(&r->mmap, off, len);
@@ -247,7 +245,7 @@ const void * ilka_read(struct ilka_region *r, ilka_off_t off, size_t len)
 void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     mcheck_tag_t tag = ILKA_MCHECK ? mcheck_untag(&off) : 0;
-    ilka_assert(off >= ilka_header_len, "invalid write offset: %p", (void *) off);
+    ilka_assert(off >= r->header_len, "invalid write offset: %p", (void *) off);
     if (ILKA_MCHECK) mcheck_access(&r->mcheck, off, len, tag);
 
     void *ptr = mmap_access(&r->mmap, off, len);
@@ -262,10 +260,15 @@ bool ilka_save(struct ilka_region *r)
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 {
-    ilka_off_t off = alloc_new(&r->alloc, len);
+    return ilka_alloc_in(r, len, ilka_tid());
+}
+
+ilka_off_t ilka_alloc_in(struct ilka_region *r, size_t len, size_t area)
+{
+    ilka_off_t off = alloc_new(&r->alloc, len, area);
 
     ilka_assert(off + len <= ilka_len(r), "invalid alloc offset: %p", (void *) off);
-    ilka_assert(off >= ilka_header_len, "invalid alloc offset: %p", (void *) off);
+    ilka_assert(off >= r->header_len, "invalid alloc offset: %p", (void *) off);
 
     if (ILKA_MCHECK) {
         mcheck_tag_t tag = mcheck_tag_next();
@@ -281,21 +284,32 @@ ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
 
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
+    ilka_free_in(r, off, len, ilka_tid());
+}
+
+void ilka_free_in(struct ilka_region *r, ilka_off_t off, size_t len, size_t area)
+{
     mcheck_tag_t tag = ILKA_MCHECK ? mcheck_untag(&off) : 0;
 
     ilka_assert(off + len <= ilka_len(r), "invalid free offset: %p", (void *) off);
-    ilka_assert(off >= ilka_header_len, "invalid free offset: %p", (void *) off);
+    ilka_assert(off >= r->header_len, "invalid free offset: %p", (void *) off);
     if (ILKA_MCHECK) mcheck_free(&r->mcheck, off, len, tag);
 
     if (ILKA_ALLOC_FILL_ON_FREE)
         memset(ilka_write(r, off, len), 0xFF, len);
 
-    alloc_free(&r->alloc, off, len);
+    alloc_free(&r->alloc, off, len, area);
 }
 
 bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
 {
-    return epoch_defer_free(&r->epoch, off, len);
+    return ilka_defer_free_in(r, off, len, ilka_tid());
+}
+
+bool ilka_defer_free_in(
+        struct ilka_region *r, ilka_off_t off, size_t len, size_t area)
+{
+    return epoch_defer_free(&r->epoch, off, len, area);
 }
 
 bool ilka_enter(struct ilka_region *r)

@@ -10,13 +10,12 @@
 
 struct epoch_defer
 {
-    size_t origin_tid;
-
     void *data;
     void (*fn) (void *);
 
-    size_t len;
     ilka_off_t off;
+    size_t len;
+    size_t area;
 
     struct epoch_defer *next;
 };
@@ -141,7 +140,7 @@ static void epoch_defer_run(struct ilka_epoch *ep)
 
         while (defers) {
             if (defers->fn) defers->fn(defers->data);
-            else ilka_free(ep->region, defers->off, defers->len);
+            else ilka_free_in(ep->region, defers->off, defers->len, defers->area);
 
             struct epoch_defer *next = defers->next;
             free(defers);
@@ -192,8 +191,6 @@ static bool epoch_defer_impl(struct ilka_epoch *ep, struct epoch_defer *node)
     struct epoch_thread *thread = epoch_thread_get(ep);
     if (!thread) return false;
 
-    node->origin_tid = ilka_tid();
-
     // morder_relaxed: pushing to a stale epoch is fine because it just means
     // that our node is already obsolete and can therefore be executed
     // right-away.
@@ -239,7 +236,8 @@ static bool epoch_defer(struct ilka_epoch *ep, void (*fn) (void *), void *data)
     return false;
 }
 
-static bool epoch_defer_free(struct ilka_epoch *ep, ilka_off_t off, size_t len)
+static bool epoch_defer_free(
+        struct ilka_epoch *ep, ilka_off_t off, size_t len, size_t area)
 {
     if (!off) {
         ilka_fail("invalid nil offset");
@@ -257,7 +255,7 @@ static bool epoch_defer_free(struct ilka_epoch *ep, ilka_off_t off, size_t len)
         return false;
     }
 
-    *node = (struct epoch_defer) { .off = off, .len = len };
+    *node = (struct epoch_defer) { .off = off, .len = len, .area = area };
     if (!epoch_defer_impl(ep, node)) goto fail;
 
     return true;

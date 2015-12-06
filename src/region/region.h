@@ -21,6 +21,7 @@ struct ilka_options
     bool populate;
     size_t vma_reserved;
 
+    size_t alloc_areas;
     size_t epoch_gc_freq_usec;
 };
 
@@ -48,8 +49,11 @@ void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len);
 bool ilka_save(struct ilka_region *r);
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len);
+ilka_off_t ilka_alloc_in(struct ilka_region *r, size_t len, size_t area);
 void ilka_free(struct ilka_region *r, ilka_off_t off, size_t len);
+void ilka_free_in(struct ilka_region *r, ilka_off_t off, size_t len, size_t area);
 bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len);
+bool ilka_defer_free_in(struct ilka_region *r, ilka_off_t off, size_t len, size_t area);
 
 bool ilka_enter(struct ilka_region *r);
 void ilka_exit(struct ilka_region *r);
