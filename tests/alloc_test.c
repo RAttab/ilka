@@ -624,16 +624,16 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, page_test_st, false);
-    ilka_tc(s, page_test_mt, false);
-    ilka_tc(s, page_cold_alloc_bench_st, false);
-    ilka_tc(s, page_cold_alloc_bench_mt, false);
-    ilka_tc(s, page_warm_alloc_bench_st, false);
-    ilka_tc(s, page_warm_alloc_bench_mt, false);
-    ilka_tc(s, page_linear_free_bench_st, false);
-    ilka_tc(s, page_linear_free_bench_mt, false);
-    ilka_tc(s, page_mixed_free_bench_st, false);
-    ilka_tc(s, page_mixed_free_bench_mt, false);
+    ilka_tc(s, page_test_st, true);
+    ilka_tc(s, page_test_mt, true);
+    ilka_tc(s, page_cold_alloc_bench_st, true);
+    ilka_tc(s, page_cold_alloc_bench_mt, true);
+    ilka_tc(s, page_warm_alloc_bench_st, true);
+    ilka_tc(s, page_warm_alloc_bench_mt, true);
+    ilka_tc(s, page_linear_free_bench_st, true);
+    ilka_tc(s, page_linear_free_bench_mt, true);
+    ilka_tc(s, page_mixed_free_bench_st, true);
+    ilka_tc(s, page_mixed_free_bench_mt, true);
 
     ilka_tc(s, block_test_st, true);
     ilka_tc(s, block_test_mt, true);
