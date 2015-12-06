@@ -43,6 +43,10 @@ static const uint64_t ilka_version = 1;
 # define ILKA_MCHECK 0
 #endif
 
+#ifndef ILKA_ALLOC_ZERO
+# define ILKA_ALLOC_ZERO 0
+#endif
+
 #ifndef ILKA_ALLOC_FILL_ON_FREE
 # define ILKA_ALLOC_FILL_ON_FREE 0
 #endif
@@ -275,6 +279,9 @@ ilka_off_t ilka_alloc_in(struct ilka_region *r, size_t len, size_t area)
         mcheck_alloc(&r->mcheck, off, len, tag);
         off = mcheck_tag(off, tag);
     }
+
+    if (ILKA_ALLOC_ZERO && off)
+        memset(ilka_write(r, off, len), 0, len);
 
     if (ILKA_ALLOC_FILL_ON_ALLOC && off)
         memset(ilka_write(r, off, len), 0xFF, len);

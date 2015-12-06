@@ -15,6 +15,7 @@
 
 /* #define ILKA_MCHECK 1 */
 
+/* #define ILKA_ALLOC_ZERO 1 */
 /* #define ILKA_ALLOC_FILL_ON_FREE 1 */
 /* #define ILKA_ALLOC_FILL_ON_ALLOC 1 */
 
