@@ -78,7 +78,7 @@ static void persist_mark(struct ilka_persist *p, ilka_off_t off, size_t len)
     } while ((off << marks_trunc_bits) < end);
 }
 
-static void _persist_save_journal(
+static void persist_save_journal(
         struct ilka_persist *p, uint64_t *marks, size_t region_len)
 {
     struct ilka_journal j;
@@ -106,7 +106,7 @@ static void _persist_save_journal(
     if (!journal_finish(&j)) ilka_abort();
 }
 
-static bool _persist_wait(pid_t pid)
+static bool persist_wait(pid_t pid)
 {
     int status;
     do {
@@ -157,12 +157,12 @@ static bool persist_save(struct ilka_persist *p)
 
 
     if (!pid) {
-        _persist_save_journal(p, old_marks, ilka_len(p->region));
+        persist_save_journal(p, old_marks, ilka_len(p->region));
         _exit(0);
     }
     else {
         free(old_marks);
-        bool ret = _persist_wait(pid);
+        bool ret = persist_wait(pid);
 
         slock_unlock(&p->lock);
         return ret;

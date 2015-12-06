@@ -4,7 +4,7 @@
 */
 
 // -----------------------------------------------------------------------------
-// mmap
+// structs
 // -----------------------------------------------------------------------------
 
 struct mmap_node
@@ -30,7 +30,12 @@ struct ilka_mmap
     struct mmap_node *last_vma;
 };
 
-static void * _mmap_map(struct ilka_mmap *m, ilka_off_t off, size_t len)
+
+// -----------------------------------------------------------------------------
+// utils
+// -----------------------------------------------------------------------------
+
+static void * mmap_map(struct ilka_mmap *m, ilka_off_t off, size_t len)
 {
     if (m->anon && munmap(m->anon, m->anon_len) == -1) {
         ilka_fail_errno("unable to munmap anon");
@@ -63,7 +68,7 @@ static void * _mmap_map(struct ilka_mmap *m, ilka_off_t off, size_t len)
     return ptr;
 }
 
-static int _mmap_remap(
+static int mmap_expand(
         struct ilka_mmap *m, void *ptr, size_t old_len, size_t new_len)
 {
     size_t diff = new_len - old_len;
@@ -102,6 +107,11 @@ static int _mmap_remap(
     return -1;
 }
 
+
+// -----------------------------------------------------------------------------
+// basics
+// -----------------------------------------------------------------------------
+
 static bool mmap_init(
         struct ilka_mmap *m, int fd, size_t len, struct ilka_options *options)
 {
@@ -118,7 +128,7 @@ static bool mmap_init(
     if (options->populate) m->flags |= MAP_POPULATE;
 
     m->head.len = len;
-    m->head.ptr = _mmap_map(m, 0, len);
+    m->head.ptr = mmap_map(m, 0, len);
 
     return m->head.ptr != NULL;
 }
@@ -148,6 +158,11 @@ static bool mmap_close(struct ilka_mmap *m)
     return true;
 }
 
+
+// -----------------------------------------------------------------------------
+// interface
+// -----------------------------------------------------------------------------
+
 static bool mmap_remap(struct ilka_mmap *m, size_t old, size_t new)
 {
     size_t off = 0;
@@ -160,7 +175,7 @@ static bool mmap_remap(struct ilka_mmap *m, size_t old, size_t new)
     ilka_assert(off + node->len == old, "inconsistent size: %p + %p != %p",
             (void *) off, (void *) node->len, (void *) old);
 
-    int ret = _mmap_remap(m, node->ptr, node->len, new - off);
+    int ret = mmap_expand(m, node->ptr, node->len, new - off);
     if (ret == -1) return false;
     if (ret) {
         node->len = new - off;
@@ -176,7 +191,7 @@ static bool mmap_remap(struct ilka_mmap *m, size_t old, size_t new)
     }
 
     tail->len = new - off;
-    tail->ptr = _mmap_map(m, off, tail->len);
+    tail->ptr = mmap_map(m, off, tail->len);
     if (!tail->ptr) goto fail;
 
     ilka_atomic_store(&node->next, tail, morder_release);

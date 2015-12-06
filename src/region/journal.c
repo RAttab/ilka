@@ -11,8 +11,9 @@ static const size_t journal_min_size = 64;
 static const char *journal_ext = ".journal";
 static const uint64_t journal_magic = 0xB0E9C4032E414824;
 
+
 // -----------------------------------------------------------------------------
-// journal
+// structs
 // -----------------------------------------------------------------------------
 
 struct journal_node
@@ -32,7 +33,12 @@ struct ilka_journal
     size_t cap;
 };
 
-static char * _journal_file(const char* file)
+
+// -----------------------------------------------------------------------------
+// utils
+// -----------------------------------------------------------------------------
+
+static char * journal_get_file(const char* file)
 {
     size_t n = strlen(file) + strlen(journal_ext) + 1;
 
@@ -46,6 +52,11 @@ static char * _journal_file(const char* file)
     return buf;
 }
 
+
+// -----------------------------------------------------------------------------
+// basics
+// -----------------------------------------------------------------------------
+
 static bool journal_init(
         struct ilka_journal *j, struct ilka_region *r, const char* file)
 {
@@ -55,7 +66,7 @@ static bool journal_init(
     j->file = file;
     j->cap = journal_min_size;
 
-    j->journal_file = _journal_file(file);
+    j->journal_file = journal_get_file(file);
     if (!j->journal_file) goto fail_journal;
 
     j->nodes = calloc(j->cap, sizeof(struct journal_node));
@@ -102,7 +113,12 @@ static bool journal_add(struct ilka_journal *j, ilka_off_t off, size_t len)
     return true;
 }
 
-static bool _journal_write(int fd, const void *ptr, size_t len)
+
+// -----------------------------------------------------------------------------
+// write
+// -----------------------------------------------------------------------------
+
+static bool journal_write(int fd, const void *ptr, size_t len)
 {
     ssize_t ret = write(fd, ptr, len);
     if (ret == -1) {
@@ -118,7 +134,7 @@ static bool _journal_write(int fd, const void *ptr, size_t len)
     return true;
 }
 
-static bool _journal_write_log(struct ilka_journal *j)
+static bool journal_write_log(struct ilka_journal *j)
 {
     const char *file = j->journal_file;
 
@@ -130,20 +146,20 @@ static bool _journal_write_log(struct ilka_journal *j)
 
     for (size_t i = 0; i < j->len; ++i) {
         struct journal_node *node = &j->nodes[i];
-        if (!_journal_write(fd, node, sizeof(struct journal_node))) goto fail;
-        if (!_journal_write(fd, ilka_read_sys(j->region, node->off, node->len), node->len))
+        if (!journal_write(fd, node, sizeof(struct journal_node))) goto fail;
+        if (!journal_write(fd, ilka_read_sys(j->region, node->off, node->len), node->len))
             goto fail;
     }
 
     struct journal_node eof = {0, 0};
-    _journal_write(fd, &eof, sizeof(struct journal_node));
+    journal_write(fd, &eof, sizeof(struct journal_node));
 
     if (fdatasync(fd) == -1) {
         ilka_fail_errno("unable to fsync journal: %s", file);
         goto fail;
     }
 
-    if (!_journal_write(fd, &journal_magic, sizeof(journal_magic)))
+    if (!journal_write(fd, &journal_magic, sizeof(journal_magic)))
         goto fail;
 
     if (fdatasync(fd) == -1) {
@@ -164,7 +180,7 @@ static bool _journal_write_log(struct ilka_journal *j)
     return false;
 }
 
-static bool _journal_write_region(struct ilka_journal *j)
+static bool journal_write_region(struct ilka_journal *j)
 {
     int fd = open(j->file, O_WRONLY);
     if (fd == -1) {
@@ -209,8 +225,8 @@ static bool journal_finish(struct ilka_journal *j)
 {
     bool result = false;
 
-    if (!_journal_write_log(j)) goto fail;
-    if (!_journal_write_region(j)) goto fail;
+    if (!journal_write_log(j)) goto fail;
+    if (!journal_write_region(j)) goto fail;
 
     if (unlink(j->journal_file) == -1) {
         ilka_fail_errno("unable to unlink journal: %s", j->journal_file);
@@ -225,7 +241,12 @@ static bool journal_finish(struct ilka_journal *j)
     return result;
 }
 
-static int _journal_check(const char *file)
+
+// -----------------------------------------------------------------------------
+// recover
+// -----------------------------------------------------------------------------
+
+static int journal_check(const char *file)
 {
     int fd = open(file, O_RDONLY);
     if (fd == -1) {
@@ -268,7 +289,7 @@ static int _journal_check(const char *file)
     return -1;
 }
 
-static bool _journal_read(int fd, void *ptr, size_t len)
+static bool journal_read(int fd, void *ptr, size_t len)
 {
     ssize_t ret = read(fd, ptr, len);
     if (ret == -1) {
@@ -286,8 +307,8 @@ static bool journal_recover(const char *file)
 {
     void *buf = NULL;
 
-    char *journal_file = _journal_file(file);
-    int journal_fd = _journal_check(journal_file);
+    char *journal_file = journal_get_file(file);
+    int journal_fd = journal_check(journal_file);
     if (journal_fd == -1) goto fail;
     if (!journal_fd) goto done;
 
@@ -307,7 +328,7 @@ static bool journal_recover(const char *file)
     }
 
     while (true) {
-        if (!_journal_read(journal_fd, &node, sizeof(node))) goto fail;
+        if (!journal_read(journal_fd, &node, sizeof(node))) goto fail;
         if (node.off == 0 && node.len == 0) break;
 
         if (cap < node.len) {
@@ -320,7 +341,7 @@ static bool journal_recover(const char *file)
             }
         }
 
-        if (!_journal_read(journal_fd, buf, node.len)) goto fail;
+        if (!journal_read(journal_fd, buf, node.len)) goto fail;
 
         ssize_t ret = pwrite(region_fd, buf, node.len, node.off);
         if (ret == -1) {
