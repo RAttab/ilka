@@ -149,10 +149,13 @@ static ilka_off_t alloc_block_new(
 {
     area %= alloc->areas;
     size_t class = alloc_block_class(&len);
+
     struct alloc_blocks *blocks = alloc_block_write(alloc, area, class);
 
-    ilka_off_t next = 0;
+    // morder_acquire: synchronizes with alloc_block_free to ensure that the
+    // the next pointer in the block is fully written before we read it.
     ilka_off_t head = ilka_atomic_load(&blocks->head, morder_acquire);
+    ilka_off_t next = 0;
     do {
         if (!head) {
             head = alloc_block_fill(alloc, blocks, len, area);
@@ -161,7 +164,7 @@ static ilka_off_t alloc_block_new(
 
         const ilka_off_t *node =
             ilka_read_sys(alloc->region, alloc_block_untag(head), sizeof(ilka_off_t));
-        next = ilka_atomic_load(node, morder_relaxed);
+        next = *node;
 
         // morder_relaxed: allocating doesn't require any writes to the block
         // and everything is fully dependent on the result of the cas op.
@@ -175,14 +178,17 @@ static void alloc_block_free(
 {
     area %= alloc->areas;
     size_t class = alloc_block_class(&len);
-    struct alloc_blocks *blocks = alloc_block_write(alloc, area, class);
 
+    struct alloc_blocks *blocks = alloc_block_write(alloc, area, class);
     ilka_off_t *node = ilka_write_sys(alloc->region, off, sizeof(ilka_off_t));
+
+    // morder_relaxed: we're not reading the content of the head block so we
+    // don't need to synchronize with anyone.
     ilka_off_t head = ilka_atomic_load(&blocks->head, morder_relaxed);
     off = alloc_block_tag(blocks, off);
 
     do {
-        ilka_atomic_store(node, head, morder_relaxed);
+        *node = head;
 
         // morder_release: make sure the head and any other user write are
         // committed before we make the block available again.
