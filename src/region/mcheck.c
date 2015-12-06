@@ -47,10 +47,8 @@ static inline mcheck_tag_t mcheck_untag(ilka_off_t *off)
 // mcheck
 // -----------------------------------------------------------------------------
 
-struct ilka_mcheck
-{
+struct ilka_mcheck {
     uint8_t *region;
-    void *blocks;
 };
 
 static void mcheck_init(struct ilka_mcheck *mcheck)
