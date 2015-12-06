@@ -165,17 +165,8 @@ static void * epoch_defer_thread(void *data)
 {
     struct ilka_epoch *ep = data;
 
-    time_t secs = ep->gc_freq_usec / (1000 * 1000);
-    long nanos = (ep->gc_freq_usec % (1000 * 1000)) * 1000;
-
     while (true) {
-
-        // nanosleep is a pthread cancellation point.
-        struct timespec time = { secs, nanos };
-        while (nanosleep(&time, &time)) {
-            if (errno == EINTR) continue;
-            ilka_fail_errno("unable to nanosleep for %lu", time.tv_nsec);
-        }
+        ilka_nsleep(ep->gc_freq_usec * 1000);
 
         slock_lock(&ep->lock);
         epoch_defer_run(ep);
