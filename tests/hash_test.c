@@ -264,9 +264,14 @@ void run_get_bench(size_t id, void *data)
 
     struct timespec t0 = ilka_now();
     {
-        for (size_t run = 0; run < t->runs; ++run)
+        for (size_t run = 0; run < t->runs; ++run) {
+            ilka_enter(t->r);
+
             for (uint64_t i = 0; i < t->n; ++i)
                 ilka_hash_get(t->hash, &i, sizeof(i));
+
+            ilka_exit(t->r);
+        }
     }
     double elapsed = ilka_elapsed(&t0);
 
@@ -309,8 +314,12 @@ void run_insert_only_bench(size_t id, void *data)
     struct timespec t0 = ilka_now();
     {
         for (size_t i = 0; i < t->n; ++i) {
+            ilka_enter(t->r);
+
             uint64_t value = (id << 32) | i;
             ilka_hash_put(t->hash, &value, sizeof(value), 1);
+
+            ilka_exit(t->r);
         }
     }
     double elapsed = ilka_elapsed(&t0);
@@ -362,12 +371,16 @@ void run_rolling_insert_bench(size_t id, void *data)
     struct timespec t0 = ilka_now();
     {
         for (size_t run = 0; run < t->runs; ++run) {
+            ilka_enter(t->r);
+
             for (size_t i = 0; i < t->n; ++i) {
                 uint64_t value = (id << 32) | i;
                 if (run % 2 == 0)
                     ilka_hash_put(t->hash, &value, sizeof(value), 1);
                 else ilka_hash_del(t->hash, &value, sizeof(value));
             }
+
+            ilka_exit(t->r);
         }
     }
     double elapsed = ilka_elapsed(&t0);
@@ -423,8 +436,13 @@ void run_cmp_xchg_bench(size_t id, void *data)
 
     struct timespec t0 = ilka_now();
     {
-        for (size_t i = 0; i < t->n; ++i)
+        for (size_t i = 0; i < t->n; ++i) {
+            ilka_enter(t->r);
+
             ilka_hash_cmp_xchg(t->hash, &value, sizeof(value), 1, 1);
+
+            ilka_exit(t->r);
+        }
     }
     double elapsed = ilka_elapsed(&t0);
 
