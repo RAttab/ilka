@@ -245,6 +245,234 @@ END_TEST
 
 
 // -----------------------------------------------------------------------------
+// bench
+// -----------------------------------------------------------------------------
+
+struct hash_bench
+{
+    struct ilka_region *r;
+    struct ilka_hash *hash;
+    char *title;
+    size_t n;
+    size_t runs;
+};
+
+
+void run_get_bench(size_t id, void *data)
+{
+    struct hash_bench *t = data;
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t run = 0; run < t->runs; ++run)
+            for (uint64_t i = 0; i < t->n; ++i)
+                ilka_hash_get(t->hash, &i, sizeof(i));
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n * t->runs, elapsed);
+}
+
+START_TEST(get_bench)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    size_t n = 10000;
+    struct ilka_hash *hash = ilka_hash_alloc(r);
+    ilka_hash_reserve(hash, n);
+
+    for (uint64_t i = 0; i < n; ++i)
+        ilka_hash_put(hash, &i, sizeof(i), 1);
+
+    struct hash_bench tdata = {
+        .title = "get_bench_st",
+        .hash = hash,
+        .r = r,
+        .n = n,
+        .runs = 1000
+    };
+    run_get_bench(0, &tdata);
+
+    tdata.title = "get_bench_mt";
+    ilka_run_threads(run_get_bench, &tdata);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+void run_insert_only_bench(size_t id, void *data)
+{
+    struct hash_bench *t = data;
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < t->n; ++i) {
+            uint64_t value = (id << 32) | i;
+            ilka_hash_put(t->hash, &value, sizeof(value), 1);
+        }
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+}
+
+START_TEST(insert_only_bench_st)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct ilka_hash *hash = ilka_hash_alloc(r);
+    struct hash_bench tdata = {
+        .title = "insert_only_bench_st",
+        .hash = hash,
+        .r = r,
+        .n = 10000,
+    };
+    run_insert_only_bench(0, &tdata);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+START_TEST(insert_only_bench_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct ilka_hash *hash = ilka_hash_alloc(r);
+    struct hash_bench tdata = {
+        .title = "insert_only_bench_mt",
+        .hash = hash,
+        .r = r,
+        .n = 10000,
+    };
+    ilka_run_threads(run_insert_only_bench, &tdata);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+void run_rolling_insert_bench(size_t id, void *data)
+{
+    struct hash_bench *t = data;
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t run = 0; run < t->runs; ++run) {
+            for (size_t i = 0; i < t->n; ++i) {
+                uint64_t value = (id << 32) | i;
+                if (run % 2 == 0)
+                    ilka_hash_put(t->hash, &value, sizeof(value), 1);
+                else ilka_hash_del(t->hash, &value, sizeof(value));
+            }
+        }
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n * t->runs, elapsed);
+}
+
+START_TEST(rolling_insert_bench_st)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct ilka_hash *hash = ilka_hash_alloc(r);
+    struct hash_bench tdata = {
+        .title = "rolling_insert_bench_st",
+        .hash = hash,
+        .r = r,
+        .n = 1000,
+        .runs = 100,
+    };
+    run_rolling_insert_bench(0, &tdata);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+START_TEST(rolling_insert_bench_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct ilka_hash *hash = ilka_hash_alloc(r);
+    struct hash_bench tdata = {
+        .title = "rolling_insert_bench_mt",
+        .hash = hash,
+        .r = r,
+        .n = 1000,
+        .runs = 100,
+    };
+    ilka_run_threads(run_rolling_insert_bench, &tdata);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+void run_cmp_xchg_bench(size_t id, void *data)
+{
+    struct hash_bench *t = data;
+
+    uint64_t value = id << 32;
+    ilka_hash_put(t->hash, &value, sizeof(value), 1);
+
+    struct timespec t0 = ilka_now();
+    {
+        for (size_t i = 0; i < t->n; ++i)
+            ilka_hash_cmp_xchg(t->hash, &value, sizeof(value), 1, 1);
+    }
+    double elapsed = ilka_elapsed(&t0);
+
+    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+}
+
+START_TEST(cmp_xchg_bench_st)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct ilka_hash *hash = ilka_hash_alloc(r);
+    ilka_hash_reserve(hash, 128);
+
+    struct hash_bench tdata = {
+        .title = "cmp_xchg_bench_st",
+        .hash = hash,
+        .r = r,
+        .n = 10000,
+    };
+    run_cmp_xchg_bench(0, &tdata);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+START_TEST(cmp_xchg_bench_mt)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    struct ilka_hash *hash = ilka_hash_alloc(r);
+    ilka_hash_reserve(hash, 128);
+
+    struct hash_bench tdata = {
+        .title = "cmp_xchg_bench_mt",
+        .hash = hash,
+        .r = r,
+        .n = 10000,
+    };
+    ilka_run_threads(run_cmp_xchg_bench, &tdata);
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
+
+// -----------------------------------------------------------------------------
 // setup
 // -----------------------------------------------------------------------------
 
@@ -253,6 +481,14 @@ void make_suite(Suite *s)
     ilka_tc(s, basic_test_st, true);
     ilka_tc(s, split_test_mt, true);
     ilka_tc(s, overlap_test_mt, true);
+
+    ilka_tc(s, get_bench, true);
+    ilka_tc(s, insert_only_bench_st, true);
+    ilka_tc(s, insert_only_bench_mt, true);
+    ilka_tc(s, rolling_insert_bench_st, true);
+    ilka_tc(s, rolling_insert_bench_mt, true);
+    ilka_tc(s, cmp_xchg_bench_st, true);
+    ilka_tc(s, cmp_xchg_bench_mt, true);
 }
 
 int main(void)
