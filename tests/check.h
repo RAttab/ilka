@@ -19,9 +19,7 @@ int ilka_tests(const char *name, ilka_make_suite_t make_suite);
 void ilka_setup();
 void ilka_teardown();
 
-void ilka_run_threads(void (*fn) (size_t, void *), void *data);
 void ilka_print_title(const char *title);
-void ilka_print_bench(const char *title, size_t n, double elapsed);
 
 enum { ilka_tc_timeout = 10 };
 

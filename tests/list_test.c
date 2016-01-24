@@ -181,7 +181,7 @@ START_TEST(insert_test_mt)
         .root = root,
         .runs = 1000000,
     };
-    ilka_run_threads(run_insert_test, &data);
+    ilka_run_threads(run_insert_test, &data, 0);
 }
 END_TEST
 
@@ -236,7 +236,7 @@ START_TEST(del_test_mt)
         .root = root,
         .runs = 1000,
     };
-    ilka_run_threads(run_del_test, &data);
+    ilka_run_threads(run_del_test, &data, 0);
 
     ck_assert_int_eq(ilka_list_head(list), 0);
 }

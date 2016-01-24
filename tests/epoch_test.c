@@ -4,6 +4,7 @@
 */
 
 #include "check.h"
+#include "bench.h"
 #include <stdlib.h>
 
 
@@ -19,7 +20,6 @@ struct epoch_test
     size_t **blocks;
 
     size_t runs;
-    const char *title;
 };
 
 void defer_fn(void *d)
@@ -99,7 +99,7 @@ START_TEST(basics_test_mt)
         .blocks = blocks,
         .runs = 1000000,
     };
-    ilka_run_threads(run_basics_test, &data);
+    ilka_run_threads(run_basics_test, &data, 0);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -196,7 +196,7 @@ START_TEST(world_test_mt)
         .blocks = blocks,
         .runs = 1000000,
     };
-    ilka_run_threads(run_world_test, &data);
+    ilka_run_threads(run_world_test, &data, 0);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -207,20 +207,17 @@ END_TEST
 // benches
 // -----------------------------------------------------------------------------
 
-void run_enter_exit_bench(size_t id, void *data)
+void run_enter_exit_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
 {
+    (void) id;
     struct epoch_test *t = data;
 
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < t->n; ++i) {
-            ilka_enter(t->r);
-            ilka_exit(t->r);
-        }
-    }
-    double elapsed = ilka_elapsed(&t0);
+    ilka_bench_start(b);
 
-    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+    for (size_t i = 0; i < n; ++i) {
+        ilka_enter(t->r);
+        ilka_exit(t->r);
+    }
 }
 
 START_TEST(enter_exit_bench_st)
@@ -228,12 +225,8 @@ START_TEST(enter_exit_bench_st)
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct epoch_test data = {
-        .title = "enter_exit_bench_st",
-        .r = r,
-        .n = 10000000
-    };
-    run_enter_exit_bench(0, &data);
+    struct epoch_test data = { .r = r };
+    ilka_bench_st("enter_exit_bench_st", run_enter_exit_bench, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -248,12 +241,8 @@ START_TEST(enter_exit_bench_mt)
     };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct epoch_test data = {
-        .title = "enter_exit_bench_mt",
-        .r = r,
-        .n = 1000000
-    };
-    ilka_run_threads(run_enter_exit_bench, &data);
+    struct epoch_test data = { .r = r };
+    ilka_bench_mt("enter_exit_bench_mt", run_enter_exit_bench, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }

@@ -58,17 +58,6 @@ void ilka_print_title(const char *title)
     printf("\n%s\n", buf);
 }
 
-void ilka_print_bench(const char *title, size_t n, double elapsed)
-{
-    char buf[1024];
-
-    size_t i = snprintf(buf, sizeof(buf), "bench: %-30s %10lu ", title, n);
-    i += ilka_print_elapsed(buf + i, sizeof(buf) - i, elapsed / n);
-    snprintf(buf + i, sizeof(buf) - i, "\n");
-
-    printf("%s", buf);
-}
-
 
 // -----------------------------------------------------------------------------
 // fixture
@@ -155,55 +144,4 @@ void ilka_teardown()
         ilka_abort();
     }
     deltree(tpath);
-}
-
-
-// -----------------------------------------------------------------------------
-// runners
-// -----------------------------------------------------------------------------
-
-struct ilka_tdata
-{
-    size_t id;
-    pthread_t tid;
-
-    void *data;
-    void (*fn) (size_t, void *);
-};
-
-void *tdata_shim(void *args)
-{
-    struct ilka_tdata *tdata = args;
-
-    tdata->fn(tdata->id, tdata->data);
-
-    return NULL;
-}
-
-void ilka_run_threads(void (*fn) (size_t, void *), void *data)
-{
-    size_t n = ilka_cpus();
-    ilka_assert(n >= 2, "too few cpus detected: %lu < 2", n);
-
-    struct ilka_tdata *tdata = alloca(n * sizeof(struct ilka_tdata));
-
-    for (size_t i = 0; i < n; ++i) {
-        tdata[i].id = i;
-        tdata[i].fn = fn;
-        tdata[i].data = data;
-
-        int ret = pthread_create(&tdata[i].tid, NULL, tdata_shim, &tdata[i]);
-        if (ret == -1) {
-            ilka_fail_errno("unable to create test thread '%lu'", i);
-            ilka_abort();
-        }
-    }
-
-    for (size_t i = 0; i < n; ++i) {
-        int ret = pthread_join(tdata[i].tid, NULL);
-        if (ret == -1) {
-            ilka_fail_errno("unable to join test thread '%lu'", i);
-            ilka_abort();
-        }
-    }
 }

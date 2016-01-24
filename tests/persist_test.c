@@ -4,6 +4,7 @@
 */
 
 #include "check.h"
+#include "bench.h"
 
 
 // -----------------------------------------------------------------------------
@@ -56,24 +57,20 @@ struct marks_bench
 {
     struct ilka_region *r;
     const char *title;
-    size_t runs;
 
     ilka_off_t off;
     size_t len;
 };
 
-void run_marks_bench(size_t id, void *data)
+void run_marks_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
 {
+    (void) id;
     struct marks_bench *t = data;
 
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < t->runs; ++i)
-            ilka_write(t->r, t->off, t->len);
-    }
-    double elapsed = ilka_elapsed(&t0);
+    ilka_bench_start(b);
 
-    if (!id) ilka_print_bench(t->title, t->runs, elapsed);
+    for (size_t i = 0; i < n; ++i)
+        ilka_write(t->r, t->off, t->len);
 }
 
 START_TEST(marks_small_bench_st)
@@ -85,13 +82,10 @@ START_TEST(marks_small_bench_st)
 
     struct marks_bench data = {
         .r = r,
-        .title = "marks_small_bench_st",
-        .runs = 10000,
         .off = ilka_alloc(r, len),
         .len = len
     };
-
-    run_marks_bench(0, &data);
+    ilka_bench_st("marks_small_bench_st", run_marks_bench, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -106,13 +100,10 @@ START_TEST(marks_small_bench_mt)
 
     struct marks_bench data = {
         .r = r,
-        .title = "marks_small_bench_mt",
-        .runs = 10000,
         .off = ilka_alloc(r, len),
         .len = len
     };
-
-    ilka_run_threads(run_marks_bench, &data);
+    ilka_bench_mt("marks_small_bench_mt", run_marks_bench, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -128,13 +119,10 @@ START_TEST(marks_large_bench_st)
 
     struct marks_bench data = {
         .r = r,
-        .title = "marks_large_bench_st",
-        .runs = 10000,
         .off = ilka_alloc(r, len),
         .len = len
     };
-
-    run_marks_bench(0, &data);
+    ilka_bench_st("marks_large_bench_st", run_marks_bench, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -149,13 +137,10 @@ START_TEST(marks_large_bench_mt)
 
     struct marks_bench data = {
         .r = r,
-        .title = "marks_large_bench_mt",
-        .runs = 10000,
         .off = ilka_alloc(r, len),
         .len = len
     };
-
-    ilka_run_threads(run_marks_bench, &data);
+    ilka_bench_mt("marks_large_bench_mt", run_marks_bench, &data);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -266,7 +251,7 @@ START_TEST(save_test_mt)
         .runs = 10,
         .threads = threads,
     };
-    ilka_run_threads(run_save_test, &data);
+    ilka_run_threads(run_save_test, &data, 0);
 
     if (!ilka_close(r)) ilka_abort();
 }

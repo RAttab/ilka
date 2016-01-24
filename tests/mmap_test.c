@@ -4,7 +4,7 @@
 */
 
 #include "check.h"
-
+#include "bench.h"
 
 void coalesce(struct ilka_region *r)
 {
@@ -66,24 +66,18 @@ END_TEST
 struct access_bench
 {
     struct ilka_region *r;
-    const char *title;
-
-    size_t n;
     ilka_off_t off;
 };
 
-void run_access_bench(size_t id, void *data)
+void run_access_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
 {
+    (void) id;
     struct access_bench *t = data;
 
-    struct timespec t0 = ilka_now();
-    {
-        for (size_t i = 0; i < t->n; ++i)
-            ilka_read(t->r, t->off, sizeof(uint64_t));
-    }
-    double elapsed = ilka_elapsed(&t0);
+    ilka_bench_start(b);
 
-    if (!id) ilka_print_bench(t->title, t->n, elapsed);
+    for (size_t i = 0; i < n; ++i)
+        ilka_read(t->r, t->off, sizeof(uint64_t));
 }
 
 START_TEST(access_bench_st_mt)
@@ -101,16 +95,16 @@ START_TEST(access_bench_st_mt)
         pages[i] = ilka_grow(r, 2 * ILKA_PAGE_SIZE);
 
     char title[256];
-    struct access_bench data = { .r = r, .title = title, .n = 10000000 };
+    struct access_bench data = { .r = r };
 
     for (size_t i = 1; i <= 32; i *= 2) {
         data.off = pages[i - 1];
 
         snprintf(title, sizeof(title), "access_%lu_bench_st", i);
-        run_access_bench(0, &data);
+        ilka_bench_st(title, run_access_bench, &data);
 
         snprintf(title, sizeof(title), "access_%lu_bench_mt", i);
-        ilka_run_threads(run_access_bench, &data);
+        ilka_bench_mt(title, run_access_bench, &data);
     }
 
     if (!ilka_close(r)) ilka_abort();
