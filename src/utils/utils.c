@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sched.h>
+#include <pthread.h>
 
 #include "ilka.h"
 #include "utils/utils.h"

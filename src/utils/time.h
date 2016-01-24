@@ -11,8 +11,7 @@
 
 struct timespec ilka_now();
 double ilka_elapsed(struct timespec *start);
-size_t ilka_print_elapsed(char *buf, size_t n, double t);
-
+double ilka_scale_elapsed(double elapsed, char *scale);
 
 // -----------------------------------------------------------------------------
 // sleep

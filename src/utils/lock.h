@@ -31,3 +31,28 @@ inline void slock_unlock(ilka_slock *l)
 {
     ilka_atomic_store(l, 0, morder_release);
 }
+
+
+// -----------------------------------------------------------------------------
+// spin-barrier
+// -----------------------------------------------------------------------------
+
+struct ilka_sbar
+{
+    uint64_t value;
+    size_t target;
+};
+
+inline void sbar_init(struct ilka_sbar *b, size_t target)
+{
+    b->value = 0;
+    b->target = target;
+}
+
+inline void sbar_wait(struct ilka_sbar *b)
+{
+    if (ilka_atomic_add_fetch(&b->value, 1, morder_acq_rel) == b->target)
+        return;
+
+    while (ilka_atomic_load(&b->value, morder_acquire) != b->target);
+}

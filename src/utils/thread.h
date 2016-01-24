@@ -11,3 +11,5 @@
 
 size_t ilka_cpus();
 size_t ilka_tid();
+
+void ilka_run_threads(void (*fn) (size_t, void *), void *data, size_t n);

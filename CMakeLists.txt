@@ -100,15 +100,16 @@ install(
 # TESTS
 #------------------------------------------------------------------------------#
 
-add_library(ilka_check SHARED tests/check.c)
-target_link_libraries(ilka_check ilka m rt ${CHECK_LIBRARIES})
+add_library(ilka_tests SHARED tests/check.c tests/bench.c)
+target_link_libraries(ilka_tests ilka m rt ${CHECK_LIBRARIES})
 
 function(ilka_test name)
     add_executable(${name}_test tests/${name}_test.c)
-    target_link_libraries(${name}_test ilka_check)
+    target_link_libraries(${name}_test ilka_tests)
     add_test(${name} bin/${name}_test)
 endfunction()
 
+ilka_test(bench)
 ilka_test(bits)
 ilka_test(bit_coder)
 ilka_test(mmap)

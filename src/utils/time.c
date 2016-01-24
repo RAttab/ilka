@@ -28,9 +28,9 @@ double ilka_elapsed(struct timespec *start)
     return secs + nsecs * 0.000000001;
 }
 
-size_t ilka_print_elapsed(char *buf, size_t n, double t)
+double ilka_scale_elapsed(double t, char *s)
 {
-    static const char scale[] = "smun";
+    static const char scale[] = "smunp";
 
     size_t i = 0;
     for (i = 0; i < sizeof(scale); ++i) {
@@ -38,7 +38,8 @@ size_t ilka_print_elapsed(char *buf, size_t n, double t)
         t *= 1000.0;
     }
 
-    return snprintf(buf, n, "%7.3f%c", t, scale[i]);
+    *s = scale[i];
+    return t;
 }
 
 
@@ -136,11 +137,11 @@ static void prof_print(
     double latency = elapsed / hits;
     latency /= 1000000000;
 
-    char buf[1024];
-    size_t i = snprintf(buf, sizeof(buf),
-            "%s%-40s %8lu (%10.2f) ", prefix, title, hits, hit_ratio);
-    i += ilka_print_elapsed(buf + i, sizeof(buf) - i, latency);
-    printf("%s (%6.2f%%)", buf, elapsed_pct * 100);
+    char scale;
+    double scaled = ilka_scale_elapsed(latency, &scale);
+
+    printf("%s%-40s %8lu (%10.2f) %f%c (%6.2f%%)",
+            prefix, title, hits, hit_ratio, scaled, scale, elapsed_pct * 100);
 }
 
 void ilka_prof_dump()

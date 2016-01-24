@@ -29,3 +29,13 @@
 
 #define ilka_unreachable() __builtin_unreachable()
 
+
+// -----------------------------------------------------------------------------
+// asm
+// -----------------------------------------------------------------------------
+
+#define ilka_asm __asm__
+
+#define ilka_no_opt()         ilka_asm volatile ("")
+#define ilka_no_opt_val(x)    ilka_asm volatile ("" : "+r" (x))
+#define ilka_no_opt_clobber() ilka_asm volatile ("" : : : "memory")

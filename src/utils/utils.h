@@ -6,6 +6,7 @@
 #pragma once
 
 #include <time.h>
+#include <errno.h>
 
 #include "arch.h"
 #include "compiler.h"
