@@ -10,7 +10,7 @@
 struct timespec ilka_now()
 {
     struct timespec ts;
-    if (!clock_gettime(CLOCK_MONOTONIC_RAW, &ts)) return ts;
+    if (!clock_gettime(CLOCK_REALTIME, &ts)) return ts;
 
     ilka_fail_errno("unable to read monotonic clock");
     ilka_abort();
@@ -58,7 +58,7 @@ bool ilka_nsleep(uint64_t nanos)
     }
 
     while (true) {
-        int ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+        int ret = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t, NULL);
         if (!ret) return true;
         if (errno == EINTR) continue;
 
