@@ -7,6 +7,8 @@
 #include "check.h"
 
 #include <pthread.h>
+#include <stdlib.h>
+
 
 // -----------------------------------------------------------------------------
 // ilka_bench
@@ -82,31 +84,72 @@ static double run_bench(
     return bench_elapsed(bench);
 }
 
-typedef double (* bench_policy) (ilka_bench_fn_t, void *, size_t);
+typedef void (* bench_policy) (ilka_bench_fn_t, void *, size_t, size_t, double *);
+
+int cmp_elapsed(const void *_lhs, const void *_rhs)
+{
+    double lhs = *((const double *) _lhs);
+    double rhs = *((const double *) _rhs);
+
+    if (lhs < rhs) return -1;
+    if (lhs > rhs) return 1;
+    return 0;
+}
+
+static void bench_report(
+        const char *title, size_t n, double *dist, size_t dist_len)
+{
+    for (size_t i = 0; i < dist_len; ++i) dist[i] /= n;
+    qsort(dist, dist_len, sizeof(double), cmp_elapsed);
+
+    char p0_mul = ' ';
+    double p0_val = ilka_scale_elapsed(dist[0], &p0_mul);
+
+    char p50_mul = ' ';
+    double p50_val = ilka_scale_elapsed(dist[dist_len / 2], &p50_mul);
+
+    char p90_mul = ' ';
+    double p90_val = ilka_scale_elapsed(dist[(dist_len * 90) / 100], &p90_mul);
+
+    printf("bench: %-30s  %8lu    p0:%6.2f%c    p50:%6.2f%c    p90:%6.2f%c\n",
+            title, n, p0_val, p0_mul, p50_val, p50_mul, p90_val, p90_mul);
+}
 
 static void bench_runner(
-        bench_policy pol, const char *title, ilka_bench_fn_t fn, void *ctx)
+        bench_policy pol,
+        const char *title,
+        ilka_bench_fn_t fn,
+        void *ctx,
+        size_t threads)
 {
     const double duration = 1 * msec();
     const size_t iterations = 1000;
 
-    // Also acts as the warmup for the bench.
+    size_t dist_len = threads * iterations;
+    double dist[dist_len];
+    memset(dist, 0, dist_len * sizeof(double));
+
     size_t n = 1;
-    double elapsed = 0;
+    double elapsed = -1;
     for (; elapsed < duration; n *= 2) {
-        elapsed = pol(fn, ctx, n);
-        ilka_assert(n < 100UL * 1000 * 1000 * 1000, "bench is a noop");
+        ilka_assert(n < 100UL * 1000 * 1000 * 1000,
+                "bench doesn't scale with n");
+
+        elapsed = -1;
+        pol(fn, ctx, n, threads, dist);
+
+        for (size_t i = 0; i < threads; ++i) {
+            if (elapsed < 0 || dist[i] < elapsed)
+                elapsed = dist[i];
+        }
     }
 
-    double min = -1;
+
     for (size_t i = 0; i < iterations; ++i) {
-        elapsed = pol(fn, ctx, n);
-        if (min < 0.0 || elapsed < min) min = elapsed;
+        pol(fn, ctx, n, threads, &dist[i * threads]);
     }
 
-    char scale = ' ';
-    double scaled = ilka_scale_elapsed(elapsed / n, &scale);
-    printf("bench: %-30s  %8lu  %6.2f%c\n", title, n, scaled, scale);
+    bench_report(title, n, dist, dist_len);
 }
 
 
@@ -114,15 +157,18 @@ static void bench_runner(
 // bench st
 // -----------------------------------------------------------------------------
 
-static double bench_st_policy(ilka_bench_fn_t fn, void *ctx, size_t n)
+static void bench_st_policy(
+        ilka_bench_fn_t fn, void *ctx, size_t n, size_t threads, double *dist)
 {
+    (void) threads;
+
     struct ilka_bench bench = { 0 };
-    return run_bench(&bench, fn, ctx, 0, n);
+    *dist = run_bench(&bench, fn, ctx, 0, n);
 }
 
 void ilka_bench_st(const char *title, ilka_bench_fn_t fn, void *ctx)
 {
-    bench_runner(bench_st_policy, title, fn, ctx);
+    bench_runner(bench_st_policy, title, fn, ctx, 1);
 }
 
 
@@ -136,7 +182,7 @@ struct bench_mt
     void *ctx;
     ilka_bench_fn_t fn;
 
-    double *elapsed;
+    double *dist;
     struct ilka_sbar barrier;
 };
 
@@ -145,30 +191,19 @@ static void bench_thread(size_t id, void *ctx)
     struct bench_mt *data = ctx;
 
     struct ilka_bench bench = { .barrier = &data->barrier };
-    data->elapsed[id] = run_bench(&bench, data->fn, data->ctx, id, data->n);
+    data->dist[id] = run_bench(&bench, data->fn, data->ctx, id, data->n);
 }
 
-static double bench_mt_policy(ilka_bench_fn_t fn, void *ctx, size_t n)
+static void bench_mt_policy(
+        ilka_bench_fn_t fn, void *ctx, size_t n, size_t threads, double *dist)
 {
-    size_t threads = ilka_cpus();
-    double elapsed[threads];
-    memset(elapsed, 0, sizeof(elapsed));
+    struct bench_mt data = { .fn = fn, .ctx = ctx, .n = n, .dist = dist };
 
-    struct bench_mt data = { .fn = fn, .ctx = ctx, .n = n, .elapsed = elapsed };
     sbar_init(&data.barrier, threads);
-
     ilka_run_threads(bench_thread, &data, threads);
-
-    double min = -1.0;
-    for (size_t i = 0; i < threads; ++i) {
-        if (min < 0 || elapsed[i] < min)
-            min = elapsed[i];
-    }
-
-    return min;
 }
 
 void ilka_bench_mt(const char *title, ilka_bench_fn_t fn, void *ctx)
 {
-    bench_runner(bench_mt_policy, title, fn, ctx);
+    bench_runner(bench_mt_policy, title, fn, ctx, ilka_cpus());
 }
