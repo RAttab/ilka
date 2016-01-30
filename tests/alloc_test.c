@@ -82,37 +82,22 @@ struct alloc_bench
 };
 
 
-void run_cold_alloc_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
+void run_basic_alloc_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
 {
     (void) id;
     struct alloc_bench *t = data;
 
-    ilka_bench_start(b);
-
-    for (size_t i = 0; i < n; ++i)
-        ilka_alloc(t->r, t->len);
-}
-
-void run_warm_alloc_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
-{
-    (void) id;
-    struct alloc_bench *t = data;
-
-    // warm-up
-    {
-        ilka_off_t *pages = alloca(n * sizeof(ilka_off_t));
-
-        for (size_t i = 0; i < n; ++i)
-            pages[i] = ilka_alloc(t->r, t->len);
-
-        for (size_t i = 0; i < n; ++i)
-            ilka_free(t->r, pages[i], t->len);
-    }
+    ilka_off_t blocks[n];
 
     ilka_bench_start(b);
 
     for (size_t i = 0; i < n; ++i)
-        ilka_alloc(t->r, t->len);
+        blocks[i] = ilka_alloc(t->r, t->len);
+
+    ilka_bench_stop(b);
+
+    for (size_t i = 0; i < n; ++i)
+        ilka_free(t->r, blocks[i], t->len);
 }
 
 void run_linear_free_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
@@ -190,49 +175,25 @@ START_TEST(page_test_mt)
 }
 END_TEST
 
-START_TEST(page_cold_alloc_bench_st)
-{
-    struct ilka_options options = { .open = true, .create = true };
-    struct ilka_region *r = ilka_open("blah", &options);
-
-    struct alloc_bench tdata = { .r = r,  .len = ILKA_PAGE_SIZE};
-    ilka_bench_st("page_cold_alloc_bench_st", run_cold_alloc_bench, &tdata);
-
-    if (!ilka_close(r)) ilka_abort();
-}
-END_TEST
-
-START_TEST(page_cold_alloc_bench_mt)
+START_TEST(page_basic_alloc_bench_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = ILKA_PAGE_SIZE };
-    ilka_bench_mt("page_cold_alloc_bench_mt", run_cold_alloc_bench, &tdata);
+    ilka_bench_st("page_basic_alloc_bench_st", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
-START_TEST(page_warm_alloc_bench_st)
+START_TEST(page_basic_alloc_bench_mt)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = ILKA_PAGE_SIZE };
-    ilka_bench_st("page_warm_alloc_bench_st", run_warm_alloc_bench, &tdata);
-
-    if (!ilka_close(r)) ilka_abort();
-}
-END_TEST
-
-START_TEST(page_warm_alloc_bench_mt)
-{
-    struct ilka_options options = { .open = true, .create = true };
-    struct ilka_region *r = ilka_open("blah", &options);
-
-    struct alloc_bench tdata = { .r = r, .len = ILKA_PAGE_SIZE };
-    ilka_bench_mt("page_warm_alloc_bench_mt", run_warm_alloc_bench, &tdata);
+    ilka_bench_mt("page_basic_alloc_bench_mt", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -325,49 +286,25 @@ START_TEST(block_test_mt)
 }
 END_TEST
 
-START_TEST(block_cold_alloc_bench_st)
+START_TEST(block_basic_alloc_bench_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_st("block_cold_alloc_bench_st", run_cold_alloc_bench, &tdata);
+    ilka_bench_st("block_basic_alloc_bench_st", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
 END_TEST
 
-START_TEST(block_cold_alloc_bench_mt)
+START_TEST(block_basic_alloc_bench_mt)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_mt("block_cold_alloc_bench_mt", run_cold_alloc_bench, &tdata);
-
-    if (!ilka_close(r)) ilka_abort();
-}
-END_TEST
-
-START_TEST(block_warm_alloc_bench_st)
-{
-    struct ilka_options options = { .open = true, .create = true };
-    struct ilka_region *r = ilka_open("blah", &options);
-
-    struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_st("block_warm_alloc_bench_st", run_warm_alloc_bench, &tdata);
-
-    if (!ilka_close(r)) ilka_abort();
-}
-END_TEST
-
-START_TEST(block_warm_alloc_bench_mt)
-{
-    struct ilka_options options = { .open = true, .create = true };
-    struct ilka_region *r = ilka_open("blah", &options);
-
-    struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_mt("block_warm_alloc_bench_mt", run_warm_alloc_bench, &tdata);
+    ilka_bench_mt("block_basic_alloc_bench_mt", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -432,7 +369,7 @@ START_TEST(block_areas_1_alloc_bench_mt)
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_mt("block_areas_1_alloc_bench_mt", run_warm_alloc_bench, &tdata);
+    ilka_bench_mt("block_areas_1_alloc_bench_mt", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -448,7 +385,7 @@ START_TEST(block_areas_2_alloc_bench_mt)
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_mt("block_areas_2_alloc_bench_mt", run_warm_alloc_bench, &tdata);
+    ilka_bench_mt("block_areas_2_alloc_bench_mt", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -464,7 +401,7 @@ START_TEST(block_areas_4_alloc_bench_mt)
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_mt("block_areas_4_alloc_bench_mt", run_warm_alloc_bench, &tdata);
+    ilka_bench_mt("block_areas_4_alloc_bench_mt", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -480,7 +417,7 @@ START_TEST(block_areas_8_alloc_bench_mt)
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_mt("block_areas_8_alloc_bench_mt", run_warm_alloc_bench, &tdata);
+    ilka_bench_mt("block_areas_8_alloc_bench_mt", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -492,7 +429,7 @@ START_TEST(block_areas_16_alloc_bench_mt)
     struct ilka_region *r = ilka_open("blah", &options);
 
     struct alloc_bench tdata = { .r = r, .len = sizeof(uint64_t) };
-    ilka_bench_mt("block_areas_16_alloc_bench_mt", run_warm_alloc_bench, &tdata);
+    ilka_bench_mt("block_areas_16_alloc_bench_mt", run_basic_alloc_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -508,10 +445,8 @@ void make_suite(Suite *s)
 {
     ilka_tc(s, page_test_st, true);
     ilka_tc(s, page_test_mt, true);
-    ilka_tc(s, page_cold_alloc_bench_st, true);
-    ilka_tc(s, page_cold_alloc_bench_mt, true);
-    ilka_tc(s, page_warm_alloc_bench_st, true);
-    ilka_tc(s, page_warm_alloc_bench_mt, true);
+    ilka_tc(s, page_basic_alloc_bench_st, true);
+    ilka_tc(s, page_basic_alloc_bench_mt, true);
     ilka_tc(s, page_linear_free_bench_st, true);
     ilka_tc(s, page_linear_free_bench_mt, true);
     ilka_tc(s, page_mixed_free_bench_st, true);
@@ -519,10 +454,8 @@ void make_suite(Suite *s)
 
     ilka_tc(s, block_test_st, true);
     ilka_tc(s, block_test_mt, true);
-    ilka_tc(s, block_cold_alloc_bench_st, true);
-    ilka_tc(s, block_cold_alloc_bench_mt, true);
-    ilka_tc(s, block_warm_alloc_bench_st, true);
-    ilka_tc(s, block_warm_alloc_bench_mt, true);
+    ilka_tc(s, block_basic_alloc_bench_st, true);
+    ilka_tc(s, block_basic_alloc_bench_mt, true);
     ilka_tc(s, block_linear_free_bench_st, true);
     ilka_tc(s, block_linear_free_bench_mt, true);
     ilka_tc(s, block_mixed_free_bench_st, true);

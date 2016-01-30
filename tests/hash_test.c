@@ -307,7 +307,7 @@ START_TEST(get_bench_mt)
         ilka_hash_put(hash, &i, sizeof(i), 1);
 
     struct hash_bench tdata = { .hash = hash, .r = r, .keys = keys };
-    ilka_bench_mt("get_bench_st", run_get_bench, &tdata);
+    ilka_bench_mt("get_bench_mt", run_get_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
 }
@@ -317,6 +317,10 @@ END_TEST
 void run_insert_only_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
 {
     struct hash_bench *t = data;
+    if (!id) {
+        if (t->hash) ilka_hash_free(t->hash);
+        t->hash = ilka_hash_alloc(t->r);
+    }
 
     ilka_bench_start(b);
 
@@ -334,9 +338,8 @@ START_TEST(insert_only_bench_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    struct ilka_hash *hash = ilka_hash_alloc(r);
 
-    struct hash_bench tdata = { .hash = hash, .r = r };
+    struct hash_bench tdata = { .r = r };
     ilka_bench_st("insert_only_bench_st", run_insert_only_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
@@ -347,9 +350,8 @@ START_TEST(insert_only_bench_mt)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    struct ilka_hash *hash = ilka_hash_alloc(r);
 
-    struct hash_bench tdata = { .hash = hash, .r = r };
+    struct hash_bench tdata = { .r = r };
     ilka_bench_mt("insert_only_bench_mt", run_insert_only_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
@@ -360,6 +362,10 @@ END_TEST
 void run_rolling_insert_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
 {
     struct hash_bench *t = data;
+    if (!id) {
+        if (t->hash) ilka_hash_free(t->hash);
+        t->hash = ilka_hash_alloc(t->r);
+    }
 
     ilka_bench_start(b);
 
@@ -385,9 +391,8 @@ START_TEST(rolling_insert_bench_st)
 {
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
-    struct ilka_hash *hash = ilka_hash_alloc(r);
 
-    struct hash_bench tdata = { .hash = hash, .r = r };
+    struct hash_bench tdata = { .r = r };
     ilka_bench_st("rolling_insert_bench_st", run_rolling_insert_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
@@ -399,8 +404,7 @@ START_TEST(rolling_insert_bench_mt)
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct ilka_hash *hash = ilka_hash_alloc(r);
-    struct hash_bench tdata = { .hash = hash, .r = r };
+    struct hash_bench tdata = { .r = r };
     ilka_bench_mt("rolling_insert_bench_mt", run_rolling_insert_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
@@ -411,6 +415,14 @@ END_TEST
 void run_cmp_xchg_bench(struct ilka_bench *b, void *data, size_t id, size_t n)
 {
     struct hash_bench *t = data;
+
+    if (!id) {
+        if (t->hash) ilka_hash_free(t->hash);
+        t->hash = ilka_hash_alloc(t->r);
+        ilka_hash_reserve(t->hash, 128);
+    }
+
+    (void) ilka_bench_setup(b, NULL);
 
     uint64_t value = id << 32;
     ilka_hash_put(t->hash, &value, sizeof(value), 1);
@@ -431,10 +443,7 @@ START_TEST(cmp_xchg_bench_st)
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct ilka_hash *hash = ilka_hash_alloc(r);
-    ilka_hash_reserve(hash, 128);
-
-    struct hash_bench tdata = { .hash = hash, .r = r };
+    struct hash_bench tdata = { .r = r };
     ilka_bench_st("cmp_xchg_bench_st", run_cmp_xchg_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
@@ -446,10 +455,7 @@ START_TEST(cmp_xchg_bench_mt)
     struct ilka_options options = { .open = true, .create = true };
     struct ilka_region *r = ilka_open("blah", &options);
 
-    struct ilka_hash *hash = ilka_hash_alloc(r);
-    ilka_hash_reserve(hash, 128);
-
-    struct hash_bench tdata = { .hash = hash, .r = r };
+    struct hash_bench tdata = { .r = r };
     ilka_bench_mt("cmp_xchg_bench_mt", run_cmp_xchg_bench, &tdata);
 
     if (!ilka_close(r)) ilka_abort();
