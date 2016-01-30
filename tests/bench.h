@@ -16,6 +16,7 @@ struct ilka_bench;
 typedef void (* ilka_bench_fn_t) (
         struct ilka_bench *, void * ctx, size_t id, size_t n);
 
+void* ilka_bench_setup(struct ilka_bench *, void *data);
 void ilka_bench_start(struct ilka_bench *);
 void ilka_bench_stop(struct ilka_bench *);
 

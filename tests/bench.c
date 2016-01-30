@@ -16,22 +16,32 @@
 
 struct ilka_bench
 {
-    struct ilka_sbar *barrier;
+    void *setup_data;
+    struct ilka_sbar *setup_barrier;
 
     bool started;
     struct timespec start;
+    struct ilka_sbar *start_barrier;
 
     bool stopped;
     struct timespec stop;
 };
 
+void* ilka_bench_setup(struct ilka_bench *bench, void *data)
+{
+    if (data) bench->setup_data = data;
+
+    if (bench->setup_barrier) sbar_wait(bench->setup_barrier);
+
+    return bench->setup_data;
+}
 
 void ilka_bench_start(struct ilka_bench *bench)
 {
     ilka_assert(!bench->started, "bench started twice");
     bench->started = true;
 
-    if (bench->barrier) sbar_wait(bench->barrier);
+    if (bench->start_barrier) sbar_wait(bench->start_barrier);
 
     if (ilka_unlikely(clock_gettime(CLOCK_REALTIME, &bench->start) < 0)) {
         ilka_fail_errno("unable to read realtime clock");
@@ -183,14 +193,18 @@ struct bench_mt
     ilka_bench_fn_t fn;
 
     double *dist;
-    struct ilka_sbar barrier;
+    struct ilka_sbar setup_barrier;
+    struct ilka_sbar start_barrier;
 };
 
 static void bench_thread(size_t id, void *ctx)
 {
     struct bench_mt *data = ctx;
 
-    struct ilka_bench bench = { .barrier = &data->barrier };
+    struct ilka_bench bench = {
+        .setup_barrier = &data->setup_barrier,
+        .start_barrier = &data->start_barrier
+    };
     data->dist[id] = run_bench(&bench, data->fn, data->ctx, id, data->n);
 }
 
@@ -198,8 +212,9 @@ static void bench_mt_policy(
         ilka_bench_fn_t fn, void *ctx, size_t n, size_t threads, double *dist)
 {
     struct bench_mt data = { .fn = fn, .ctx = ctx, .n = n, .dist = dist };
+    sbar_init(&data.setup_barrier, threads);
+    sbar_init(&data.start_barrier, threads);
 
-    sbar_init(&data.barrier, threads);
     ilka_run_threads(bench_thread, &data, threads);
 }
 
