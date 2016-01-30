@@ -36,6 +36,7 @@ enum { ilka_off_bits = 64 - ILKA_MCHECK_TAG_BITS };
 
 struct ilka_region * ilka_open(const char *file, struct ilka_options *options);
 bool ilka_close(struct ilka_region *r);
+bool ilka_rm(struct ilka_region *r);
 
 size_t ilka_len(struct ilka_region *r);
 ilka_off_t ilka_grow(struct ilka_region *r, size_t len);

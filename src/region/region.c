@@ -177,9 +177,18 @@ bool ilka_close(struct ilka_region *r)
 
     if (!mmap_close(&r->mmap)) return false;
     if (!file_close(r->fd)) return false;
+    free(r);
 
     return true;
 }
+
+bool ilka_rm(struct ilka_region *r)
+{
+    const char *file = r->file;
+    if (!ilka_close(r)) return false;
+    return file_rm(file);
+}
+
 
 size_t ilka_len(struct ilka_region *r)
 {

@@ -40,6 +40,14 @@ static bool file_close(int fd)
     return false;
 }
 
+static bool file_rm(const char *file)
+{
+    if (!unlink(file)) return true;
+
+    ilka_fail_errno("unable to unlink '%s'", file);
+    return false;
+}
+
 static ssize_t file_len(int fd)
 {
     struct stat stat;
