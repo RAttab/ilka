@@ -100,23 +100,45 @@ install(
 # TESTS
 #------------------------------------------------------------------------------#
 
-add_library(ilka_tests SHARED tests/check.c tests/bench.c)
+add_library(ilka_tests SHARED tests/check.c)
 target_link_libraries(ilka_tests ilka m rt ${CHECK_LIBRARIES})
 
 function(ilka_test name)
     add_executable(${name}_test tests/${name}_test.c)
     target_link_libraries(${name}_test ilka_tests)
-    add_test(${name} bin/${name}_test)
+    add_test(${name}_test bin/${name}_test)
+    set_tests_properties(${name}_test PROPERTIES LABELS "test")
 endfunction()
 
-ilka_test(bench)
 ilka_test(bits)
 ilka_test(bit_coder)
 ilka_test(mmap)
-ilka_test(alloc)
 ilka_test(epoch)
+ilka_test(alloc)
 ilka_test(persist)
 
 ilka_test(vec)
 ilka_test(list)
 ilka_test(hash)
+
+#------------------------------------------------------------------------------#
+# BENCH
+#------------------------------------------------------------------------------#
+
+add_library(ilka_bench SHARED tests/bench.c)
+target_link_libraries(ilka_bench ilka ilka_tests m rt ${CHECK_LIBRARIES})
+
+function(ilka_bench name)
+    add_executable(${name}_bench tests/${name}_bench.c)
+    target_link_libraries(${name}_bench ilka_bench)
+    add_test(${name}_bench bin/${name}_bench)
+    set_tests_properties(${name}_bench PROPERTIES LABELS "bench")
+endfunction()
+
+ilka_bench(bench)
+ilka_bench(mmap)
+ilka_bench(epoch)
+ilka_bench(alloc)
+ilka_bench(persist)
+
+ilka_bench(hash)

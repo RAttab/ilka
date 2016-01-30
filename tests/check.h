@@ -29,7 +29,6 @@ enum { ilka_tc_timeout = 10 };
     (void) name;                                                \
     if (!enabled) break;                                        \
     tcase_add_unchecked_fixture(tc, ilka_setup, ilka_teardown); \
-    tcase_set_timeout(tc, ilka_tc_timeout);                     \
 
 #define ilka_tc_post(suite, name)               \
     suite_add_tcase(suite, tc);                 \
@@ -37,30 +36,19 @@ enum { ilka_tc_timeout = 10 };
 
 #define ilka_tc(s, n, t)                        \
     ilka_tc_pre(s, n, t);                       \
+    tcase_set_timeout(tc, ilka_tc_timeout);     \
     tcase_add_test(tc, n);                      \
     ilka_tc_post(s, n)
 
 #define ilka_tc_signal(s, n, sig, t)            \
     ilka_tc_pre(s, n, t);                       \
+    tcase_set_timeout(tc, ilka_tc_timeout);     \
     tcase_add_test_raise_signal(tc, n, sig);    \
     ilka_tc_post(s, n)
 
-#define ilka_tc_exit(s, n, exp, t)              \
+
+#define ilka_tc_timeout(s, n, timeout, t)       \
     ilka_tc_pre(s, n, t);                       \
-    tcase_add_exit_test(tc, n, exp);            \
-    ilka_tc_post(s, n)
-
-#define ilka_tc_loop(s, n, start, end, t)       \
-    ilka_tc_pre(s, n,t );                       \
-    tcase_add_loop_test(tc, n, start, end);     \
-    ilka_tc_post(s, n)
-
-#define ilka_tc_loop_signal(s, n, start, end, sig, t)   \
-    ilka_tc_pre(s, n, t);                               \
-    tcase_add_loop_test(tc, n, sig, start, end);        \
-    ilka_tc_post(s, n)
-
-#define ilka_tc_loop_exit(s, n, start, end, exp, t)     \
-    ilka_tc_pre(s, n, t);                               \
-    tcase_add_loop_test(tc, n, exp, start, end);        \
+    tcase_set_timeout(tc, timeout);             \
+    tcase_add_test(tc, n);                      \
     ilka_tc_post(s, n)

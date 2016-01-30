@@ -107,7 +107,7 @@ int cmp_elapsed(const void *_lhs, const void *_rhs)
 }
 
 static void bench_report(
-        const char *title, size_t n, double *dist, size_t dist_len)
+        const char *title, size_t n, size_t threads, double *dist, size_t dist_len)
 {
     for (size_t i = 0; i < dist_len; ++i) dist[i] /= n;
     qsort(dist, dist_len, sizeof(double), cmp_elapsed);
@@ -121,8 +121,8 @@ static void bench_report(
     char p90_mul = ' ';
     double p90_val = ilka_scale_elapsed(dist[(dist_len * 90) / 100], &p90_mul);
 
-    printf("bench: %-30s  %8lu    p0:%6.2f%c    p50:%6.2f%c    p90:%6.2f%c\n",
-            title, n, p0_val, p0_mul, p50_val, p50_mul, p90_val, p90_mul);
+    printf("bench: %-30s  %4lu %8lu    p0:%6.2f%c    p50:%6.2f%c    p90:%6.2f%c\n",
+            title, threads, n, p0_val, p0_mul, p50_val, p50_mul, p90_val, p90_mul);
 }
 
 static void bench_runner(
@@ -145,21 +145,17 @@ static void bench_runner(
         ilka_assert(n < 100UL * 1000 * 1000 * 1000,
                 "bench doesn't scale with n");
 
-        elapsed = -1;
         pol(fn, ctx, n, threads, dist);
 
-        for (size_t i = 0; i < threads; ++i) {
-            if (elapsed < 0 || dist[i] < elapsed)
-                elapsed = dist[i];
-        }
+        elapsed = 0;
+        for (size_t i = 0; i < threads; ++i) elapsed += dist[i];
+        elapsed /= threads;
     }
 
-
-    for (size_t i = 0; i < iterations; ++i) {
+    for (size_t i = 0; i < iterations; ++i)
         pol(fn, ctx, n, threads, &dist[i * threads]);
-    }
 
-    bench_report(title, n, dist, dist_len);
+    bench_report(title, n, threads, dist, dist_len);
 }
 
 

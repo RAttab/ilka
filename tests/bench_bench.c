@@ -1,4 +1,4 @@
-/* bench_test.c
+/* bench_bench.c
    Rémi Attab (remi.attab@gmail.com), 24 Jan 2016
    FreeBSD-style copyright and disclaimer apply
 
