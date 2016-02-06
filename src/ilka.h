@@ -16,4 +16,5 @@
 #include "compiler.h"
 #include "log.h"
 #include "error.h"
+#include "key.h"
 #include "region/region.h"

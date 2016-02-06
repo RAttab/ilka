@@ -18,3 +18,4 @@
 
 #include "log.c"
 #include "error.c"
+#include "key.c"
