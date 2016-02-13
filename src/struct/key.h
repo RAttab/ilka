@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include "ilka.h"
+
+
 // -----------------------------------------------------------------------------
 // key
 // -----------------------------------------------------------------------------
@@ -29,6 +32,18 @@ bool ilka_key_reserve(struct ilka_key *, size_t cap);
 int ilka_key_cmp(struct ilka_key *lhs, struct ilka_key *rhs);
 bool ilka_key_copy(struct ilka_key *src, struct ilka_key *dest);
 
+const uint8_t *ilka_key_data(struct ilka_key *);
+
+
+// -----------------------------------------------------------------------------
+// region
+// -----------------------------------------------------------------------------
+
+ilka_off_t ilka_key_region_save(struct ilka_region *, struct ilka_key *);
+void ilka_key_region_free(struct ilka_region *, ilka_off_t off);
+struct ilka_key_it ilka_key_region_load(
+        struct ilka_region *, ilka_off_t off, struct ilka_key_it it);
+
 
 // -----------------------------------------------------------------------------
 // it
@@ -40,7 +55,8 @@ struct ilka_key_it
     size_t bit;
 };
 
-struct ilka_key_it ilka_key_begin(struct ilka_key *);
+struct ilka_key_it ilka_key_at(struct ilka_key *, size_t byte);
+struct ilka_key_it ilka_key_at_bit(struct ilka_key *, size_t bit);
 bool ilka_key_err(struct ilka_key_it it);
 bool ilka_key_end(struct ilka_key_it it);
 

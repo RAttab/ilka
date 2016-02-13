@@ -6,6 +6,7 @@
 */
 
 #include "check.h"
+#include "struct/key.h"
 
 
 // -----------------------------------------------------------------------------
@@ -38,7 +39,7 @@ START_TEST(empty_test)
     struct ilka_key k;
     ilka_key_init(&k);
 
-    struct ilka_key_it it = ilka_key_begin(&k);
+    struct ilka_key_it it = ilka_key_at(&k, 0);
     ck_assert(ilka_key_end(it));
     check_remaining(it, 0);
 
@@ -51,7 +52,7 @@ START_TEST(empty_test)
 
         ck_assert(!ilka_key_cmp(&k, &other));
 
-        struct ilka_key_it it = ilka_key_begin(&other);
+        struct ilka_key_it it = ilka_key_at(&other, 0);
         ck_assert(!ilka_key_err(it));
         ck_assert(ilka_key_end(it));
         check_remaining(it, 0);
@@ -83,10 +84,10 @@ START_TEST(read_write_test)
     const uint8_t  v_8  = 0xCD;
 
     {
-        struct ilka_key_it it = ilka_key_begin(&k);
+        struct ilka_key_it it = ilka_key_at(&k, 0);
         it = ilka_key_write_8(it, v_8);
         it = ilka_key_write_32(it, v_32);
-        it = ilka_key_write_str(it, v_str, sizeof(v_str));
+        it = ilka_key_write_str(it, v_str, strlen(v_str));
         it = ilka_key_write_64(it, v_64);
         it = ilka_key_write_16(it, v_16);
 
@@ -98,7 +99,7 @@ START_TEST(read_write_test)
     ck_assert(!ilka_key_cmp(&k, &k));
 
     {
-        struct ilka_key_it it = ilka_key_begin(&k);
+        struct ilka_key_it it = ilka_key_at(&k, 0);
         ck_assert(!ilka_key_end(it));
 
         size_t remaining_bits = sizeof(v_str)
@@ -140,10 +141,7 @@ make_key_impl(const char *data, size_t data_n)
 {
     struct ilka_key k;
     ilka_key_init(&k);
-
-    struct ilka_key_it it = ilka_key_begin(&k);
-    it = ilka_key_write_bytes(it, (const uint8_t *) data, data_n);
-
+    ilka_key_write_bytes(ilka_key_at(&k, 0), (const uint8_t *) data, data_n);
     return k;
 }
 
@@ -218,12 +216,12 @@ START_TEST(endian_test)
     const uint64_t c = 0x0123456789ABCDEFUL;
 
     {
-        struct ilka_key_it it = ilka_key_begin(&k);
+        struct ilka_key_it it = ilka_key_at(&k, 0);
         it = ilka_key_write_64(it, c);
     }
 
     {
-        struct ilka_key_it it = ilka_key_begin(&k);
+        struct ilka_key_it it = ilka_key_at(&k, 0);
         for (size_t i = 0; i < 8; ++i) {
             size_t j = 64 - ((i + 1) * 8);
 
@@ -237,6 +235,35 @@ START_TEST(endian_test)
 }
 END_TEST
 
+START_TEST(region_test)
+{
+    struct ilka_options options = { .open = true, .create = true };
+    struct ilka_region *r = ilka_open("blah", &options);
+
+    const uint8_t *data = (const uint8_t *)
+        "what's with all these long strings that never end."
+        "It's like there's this conspiracy or something."
+        "I don't like it one bit.";
+
+    struct ilka_key a, b;
+
+    for (size_t i = 0; i < 64; ++i) {
+        ilka_key_write_bytes(ilka_key_at(&a, 0), data, i);
+
+        ilka_off_t off = ilka_key_region_save(r, &a);
+        ilka_assert(off, "unable to save key");
+
+        struct ilka_key_it it = ilka_key_region_load(r, off, ilka_key_at(&b, 0));
+        ilka_assert(!ilka_key_err(it), "unable to load region");
+        ilka_assert(!ilka_key_cmp(&a, &b), "loaded wrong key data");
+
+        ilka_key_region_free(r, off);
+    }
+
+    if (!ilka_close(r)) ilka_abort();
+}
+END_TEST
+
 
 // -----------------------------------------------------------------------------
 // setup
@@ -244,10 +271,11 @@ END_TEST
 
 void make_suite(Suite *s)
 {
-    ilka_tc(s, empty_test, true);
-    ilka_tc(s, read_write_test, true);
-    ilka_tc(s, cmp_test, true);
-    ilka_tc(s, endian_test, true);
+    ilka_tc(s, empty_test, false);
+    ilka_tc(s, read_write_test, false);
+    ilka_tc(s, cmp_test, false);
+    ilka_tc(s, endian_test, false);
+    ilka_tc(s, region_test, true);
 }
 
 int main(void)
@@ -287,7 +315,7 @@ START_TEST(bits_test)
     size_t bits = 0;
 
     {
-        struct ilka_key_it it = ilka_key_begin(&k);
+        struct ilka_key_it it = ilka_key_at(&k, 0);
 
         ilka_key_push(&it, 0x5, 3);
         bits += 3;
@@ -310,7 +338,7 @@ START_TEST(bits_test)
     }
 
     {
-        struct ilka_key_it it = ilka_key_begin(&k);
+        struct ilka_key_it it = ilka_key_at(&k, 0);
 
         check_pop(it, 3, 0x5);
         check_remaining(it, bits -= 3);
