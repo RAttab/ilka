@@ -11,11 +11,21 @@
 // options
 // -----------------------------------------------------------------------------
 
+enum ilka_region_type
+{
+    ilka_private,
+    ilka_shared,
+};
+
 struct ilka_options
 {
+    enum ilka_region_type type;
+
     bool open;
     bool create;
+    bool truncate;
     bool read_only;
+    int mode;
 
     bool huge_tlb;
     bool populate;

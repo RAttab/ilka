@@ -21,11 +21,41 @@ static int file_open(const char *file, struct ilka_options *options)
         flags |= O_CREAT;
         flags |= options->open ? 0 : O_EXCL;
     }
+    if (options->truncate) flags |= O_TRUNC;
     flags |= options->read_only ? O_RDONLY : O_RDWR;
 
-    int fd = open(file, flags, 0764);
+    int mode = options->mode ? options->mode : 0600;
+
+    int fd = open(file, flags, mode);
     if (fd == -1) {
         ilka_fail_errno("unable to open '%s'", file);
+        return -1;
+    }
+
+    return fd;
+}
+
+static int file_open_shm(const char *name, struct ilka_options *options)
+{
+    if (!options->open && !options->create) {
+        ilka_fail("must provide 'ilka_open' or 'ilka_create' to open '%s'", name);
+        return -1;
+    }
+
+    int flags = 0;
+
+    if (options->create) {
+        flags |= O_CREAT;
+        flags |= options->open ? 0 : O_EXCL;
+    }
+    if (options->truncate) flags |= O_TRUNC;
+    flags |= options->read_only ? O_RDONLY : O_RDWR;
+
+    int mode = options->mode ? options->mode : 0600;
+
+    int fd = shm_open(name, flags, mode);
+    if (fd == -1) {
+        ilka_fail_errno("unable to open shm '%s'", name);
         return -1;
     }
 
@@ -45,6 +75,14 @@ static bool file_rm(const char *file)
     if (!unlink(file)) return true;
 
     ilka_fail_errno("unable to unlink '%s'", file);
+    return false;
+}
+
+static bool file_rm_shm(const char *file)
+{
+    if (!shm_unlink(file)) return true;
+
+    ilka_fail_errno("unable to unlink shm '%s'", file);
     return false;
 }
 

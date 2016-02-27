@@ -82,30 +82,18 @@ struct ilka_region
     struct ilka_mmap mmap;
     struct ilka_persist persist;
     struct ilka_alloc alloc;
-    struct ilka_epoch epoch;
+    union ilka_epoch epoch;
 
     struct ilka_mcheck mcheck;
 };
 
 
 // -----------------------------------------------------------------------------
-// region
+// common
 // -----------------------------------------------------------------------------
 
-const struct meta * meta_read(struct ilka_region *r)
+static struct ilka_region * region_alloc(const char *file, struct ilka_options *options)
 {
-    return ilka_read_sys(r, 0, sizeof(struct meta));
-}
-
-struct meta * meta_write(struct ilka_region *r)
-{
-    return ilka_write_sys(r, 0, sizeof(struct meta));
-}
-
-struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
-{
-    journal_recover(file);
-
     struct ilka_region *r = calloc(1, sizeof(struct ilka_region));
     if (!r) {
         ilka_fail("out-of-memory for ilka_region struct: %lu",
@@ -114,20 +102,34 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
     }
 
     slock_init(&r->lock);
-
     r->file = file;
     r->options = *options;
 
-    if ((r->fd = file_open(file, &r->options)) == -1) goto fail_open;
-    if ((r->len = file_grow(r->fd, ILKA_PAGE_SIZE)) == -1UL) goto fail_grow;
-    if (!mmap_init(&r->mmap, r->fd, r->len, &r->options)) goto fail_mmap;
-    if (!persist_init(&r->persist, r, r->file)) goto fail_persist;
+    return r;
+}
 
+
+// -----------------------------------------------------------------------------
+// meta
+// -----------------------------------------------------------------------------
+
+static const struct meta * meta_read(struct ilka_region *r)
+{
+    return ilka_read_sys(r, 0, sizeof(struct meta));
+}
+
+static struct meta * meta_write(struct ilka_region *r)
+{
+    return ilka_write_sys(r, 0, sizeof(struct meta));
+}
+
+static const struct meta * meta_init(struct ilka_region *r)
+{
     const struct meta * meta = meta_read(r);
     if (meta->magic != ilka_magic) {
         if (!r->options.create) {
-            ilka_fail("invalid magic for file '%s'", file);
-            goto fail_magic;
+            ilka_fail("invalid magic for file '%s'", r->file);
+            return NULL;
         }
 
         struct meta * m = meta_write(r);
@@ -138,57 +140,69 @@ struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
 
     if (meta->version != ilka_version) {
         ilka_fail("invalid version for file '%s': %lu != %lu",
-                file, meta->version, ilka_version);
-        goto fail_version;
+                r->file, meta->version, ilka_version);
+        return NULL;
     }
-
-    if (!alloc_init(&r->alloc, r, &r->options, meta->alloc)) goto fail_alloc;
-    if (!epoch_init(&r->epoch, r, &r->options)) goto fail_epoch;
-    if (ILKA_MCHECK) mcheck_init(&r->mcheck);
 
     r->header_len = alloc_end(&r->alloc);
 
-    return r;
+    return meta;
+}
 
-  fail_epoch:
-  fail_alloc:
-  fail_version:
-  fail_magic:
-    persist_close(&r->persist);
 
-  fail_persist:
-    mmap_close(&r->mmap);
+// -----------------------------------------------------------------------------
+// dispatch
+// -----------------------------------------------------------------------------
 
-  fail_mmap:
-  fail_grow:
-    file_close(r->fd);
+#define ilka_dispatch(options, name, ...)                               \
+    do {                                                                \
+        switch((options)->type) {                                       \
+        case ilka_shared: return region_shrd_ ## name (__VA_ARGS__);    \
+        case ilka_private: return region_priv_ ## name (__VA_ARGS__);   \
+        default:                                                        \
+            ilka_fail("unknown region type '%d'", (options)->type);     \
+            ilka_abort();                                               \
+        }                                                               \
+    } while(false)
 
-  fail_open:
-    free(r);
-    return NULL;
+#define ilka_dispatch_noret(options, name, ...)                         \
+    do {                                                                \
+        switch((options)->type) {                                       \
+        case ilka_shared: region_shrd_ ## name (__VA_ARGS__); break;    \
+        case ilka_private: region_priv_ ## name (__VA_ARGS__); break;   \
+        default:                                                        \
+            ilka_fail("unknown region type '%d'", (options)->type);     \
+            ilka_abort();                                               \
+        }                                                               \
+    } while(false)
+
+
+// -----------------------------------------------------------------------------
+// implementations
+// -----------------------------------------------------------------------------
+
+#include "region_private.c"
+#include "region_shared.c"
+
+
+// -----------------------------------------------------------------------------
+// basics
+// -----------------------------------------------------------------------------
+
+struct ilka_region * ilka_open(const char *file, struct ilka_options *options)
+{
+    ilka_dispatch(options, open, file, options);
 }
 
 bool ilka_close(struct ilka_region *r)
 {
-    if (!ilka_save(r)) return false;
-
-    epoch_close(&r->epoch);
-    persist_close(&r->persist);
-
-    if (!mmap_close(&r->mmap)) return false;
-    if (!file_close(r->fd)) return false;
-    free(r);
-
-    return true;
+    ilka_dispatch(&r->options, close, r);
 }
 
 bool ilka_rm(struct ilka_region *r)
 {
-    const char *file = r->file;
-    if (!ilka_close(r)) return false;
-    return file_rm(file);
+    ilka_dispatch(&r->options, rm, r);
 }
-
 
 size_t ilka_len(struct ilka_region *r)
 {
@@ -234,6 +248,11 @@ static bool ilka_is_edge(struct ilka_region *r, ilka_off_t off)
     return mmap_is_edge(&r->mmap, off);
 }
 
+static void ilka_mark(struct ilka_region *r, ilka_off_t off, size_t len)
+{
+    ilka_dispatch_noret(&r->options, mark, r, off, len);
+}
+
 const void * ilka_read_sys(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     return mmap_access(&r->mmap, off, len);
@@ -242,7 +261,7 @@ const void * ilka_read_sys(struct ilka_region *r, ilka_off_t off, size_t len)
 void * ilka_write_sys(struct ilka_region *r, ilka_off_t off, size_t len)
 {
     void *ptr = mmap_access(&r->mmap, off, len);
-    if (ptr) persist_mark(&r->persist, off, len);
+    if (ptr) ilka_mark(r, off, len);
     return ptr;
 }
 
@@ -268,7 +287,7 @@ void * ilka_write(struct ilka_region *r, ilka_off_t off, size_t len)
 
 bool ilka_save(struct ilka_region *r)
 {
-    return persist_save(&r->persist);
+    ilka_dispatch(&r->options, save, r);
 }
 
 ilka_off_t ilka_alloc(struct ilka_region *r, size_t len)
@@ -326,31 +345,30 @@ bool ilka_defer_free(struct ilka_region *r, ilka_off_t off, size_t len)
 bool ilka_defer_free_in(
         struct ilka_region *r, ilka_off_t off, size_t len, size_t area)
 {
-    return epoch_defer_free(&r->epoch, off, len, area);
+    ilka_dispatch(&r->options, defer_free, r, off, len, area);
 }
 
 bool ilka_enter(struct ilka_region *r)
 {
-    return epoch_enter(&r->epoch);
+    ilka_dispatch(&r->options, enter, r);
 }
 
 void ilka_exit(struct ilka_region *r)
 {
-    epoch_exit(&r->epoch);
+    ilka_dispatch_noret(&r->options, exit, r);
 }
 
 bool ilka_defer(struct ilka_region *r, void (*fn) (void *), void *data)
 {
-    return epoch_defer(&r->epoch, fn, data);
+    ilka_dispatch(&r->options, defer, r, fn, data);
 }
 
 void ilka_world_stop(struct ilka_region *r)
 {
-    epoch_world_stop(&r->epoch);
-    mmap_coalesce(&r->mmap);
+    ilka_dispatch_noret(&r->options, world_stop, r);
 }
 
 void ilka_world_resume(struct ilka_region *r)
 {
-    epoch_world_resume(&r->epoch);
+    ilka_dispatch_noret(&r->options, world_resume, r);
 }
