@@ -22,7 +22,17 @@ region_shrd_open(const char *file, struct ilka_options *options)
     if (!meta) goto fail_meta;
 
     if (!alloc_init(&r->alloc, r, &r->options, meta->alloc)) goto fail_alloc;
-    ilka_todo{ if (!epoch_init(&r->epoch, r, &r->options)) goto fail_epoch; }
+
+    if (meta->epoch) {
+        if (!epoch_shrd_open(&r->epoch.shrd, r, &r->options, meta->epoch))
+            goto fail_epoch;
+    }
+    else {
+        struct meta *wmeta = meta_write(r);
+        if (!epoch_shrd_init(&r->epoch.shrd, r, &r->options, &wmeta->epoch))
+            goto fail_epoch;
+    }
+
     if (ILKA_MCHECK) mcheck_init(&r->mcheck);
 
     r->header_len = alloc_end(&r->alloc);
@@ -32,9 +42,6 @@ region_shrd_open(const char *file, struct ilka_options *options)
   fail_epoch:
   fail_alloc:
   fail_meta:
-    persist_close(&r->persist);
-
-  fail_persist:
     mmap_close(&r->mmap);
 
   fail_mmap:
@@ -48,8 +55,7 @@ region_shrd_open(const char *file, struct ilka_options *options)
 
 static bool region_shrd_close(struct ilka_region *r)
 {
-    ilka_todo{ epoch_close(&r->epoch); }
-    persist_close(&r->persist);
+    epoch_shrd_close(&r->epoch.shrd);
 
     if (!mmap_close(&r->mmap)) return false;
     if (!file_close(r->fd)) return false;
@@ -89,30 +95,32 @@ static void region_shrd_mark(struct ilka_region *r, ilka_off_t off, size_t len)
 
 static bool region_shrd_enter(struct ilka_region *r)
 {
-    return epoch_shrd_enter(&r->epoch);
+    return epoch_shrd_enter(&r->epoch.shrd);
 }
 
 static void region_shrd_exit(struct ilka_region *r)
 {
-    epoch_shrd_exit(&r->epoch);
+    epoch_shrd_exit(&r->epoch.shrd);
 }
 
-static bool region_shrd_defer(struct ilka_region *r, void (*fn) (void *), void *data)
+static bool region_shrd_defer(
+        struct ilka_region *r, void (*fn) (void *), void *data)
 {
-    return epoch_shrd_defer(&r->epoch, fn, data);
+    return epoch_shrd_defer(&r->epoch.shrd, fn, data);
 }
 
-bool region_shrd_defer_free(struct ilka_region *r, ilka_off_t off, size_t len, size_t area)
+static bool region_shrd_defer_free(
+        struct ilka_region *r, ilka_off_t off, size_t len, size_t area)
 {
-    return epoch_shrd_defer_free(&r->epoch, off, len, area);
+    return epoch_shrd_defer_free(&r->epoch.shrd, off, len, area);
 }
 
 static void region_shrd_world_stop(struct ilka_region *r)
 {
-    epoch_shrd_world_stop(&r->epoch);
+    epoch_shrd_world_stop(&r->epoch.shrd);
 }
 
 static void region_shrd_world_resume(struct ilka_region *r)
 {
-    epoch_shrd_world_resume(&r->epoch);
+    epoch_shrd_world_resume(&r->epoch.shrd);
 }

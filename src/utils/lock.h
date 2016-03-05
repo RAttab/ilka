@@ -32,6 +32,11 @@ inline void slock_unlock(ilka_slock *l)
     ilka_atomic_store(l, 0, morder_release);
 }
 
+inline bool slock_is_locked(ilka_slock *l)
+{
+    return ilka_atomic_load(l, morder_relaxed);
+}
+
 
 // -----------------------------------------------------------------------------
 // spin-barrier

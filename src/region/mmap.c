@@ -123,7 +123,7 @@ static bool mmap_init(
     m->prot = PROT_READ;
     if (!options->read_only) m->prot |= PROT_WRITE;
 
-    m->flags = options->type == ilka_public ? MAP_SHARED : MAP_PRIVATE;
+    m->flags = options->type == ilka_shared ? MAP_SHARED : MAP_PRIVATE;
     if (options->huge_tlb) m->flags |= MAP_HUGETLB;
     if (options->populate) m->flags |= MAP_POPULATE;
 

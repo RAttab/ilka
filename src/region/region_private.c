@@ -27,7 +27,7 @@ region_priv_open(const char *file, struct ilka_options *options)
     if (!meta) goto fail_meta;
 
     if (!alloc_init(&r->alloc, r, &r->options, meta->alloc)) goto fail_alloc;
-    if (!epoch_init(&r->epoch, r, &r->options)) goto fail_epoch;
+    if (!epoch_priv_init(&r->epoch.priv, r, &r->options)) goto fail_epoch;
     if (ILKA_MCHECK) mcheck_init(&r->mcheck);
 
     r->header_len = alloc_end(&r->alloc);
@@ -55,7 +55,7 @@ static bool region_priv_close(struct ilka_region *r)
 {
     if (!region_priv_save(r)) return false;
 
-    epoch_close(&r->epoch);
+    epoch_priv_close(&r->epoch.priv);
     persist_close(&r->persist);
 
     if (!mmap_close(&r->mmap)) return false;
@@ -94,31 +94,31 @@ static void region_priv_mark(struct ilka_region *r, ilka_off_t off, size_t len)
 
 static bool region_priv_enter(struct ilka_region *r)
 {
-    return epoch_priv_enter(&r->epoch);
+    return epoch_priv_enter(&r->epoch.priv);
 }
 
 static void region_priv_exit(struct ilka_region *r)
 {
-    epoch_priv_exit(&r->epoch);
+    epoch_priv_exit(&r->epoch.priv);
 }
 
 static bool region_priv_defer(struct ilka_region *r, void (*fn) (void *), void *data)
 {
-    return epoch_priv_defer(&r->epoch, fn, data);
+    return epoch_priv_defer(&r->epoch.priv, fn, data);
 }
 
 bool region_priv_defer_free(struct ilka_region *r, ilka_off_t off, size_t len, size_t area)
 {
-    return epoch_priv_defer_free(&r->epoch, off, len, area);
+    return epoch_priv_defer_free(&r->epoch.priv, off, len, area);
 }
 
 static void region_priv_world_stop(struct ilka_region *r)
 {
-    epoch_priv_world_stop(&r->epoch);
+    epoch_priv_world_stop(&r->epoch.priv);
     mmap_coalesce(&r->mmap);
 }
 
 static void region_priv_world_resume(struct ilka_region *r)
 {
-    epoch_priv_world_resume(&r->epoch);
+    epoch_priv_world_resume(&r->epoch.priv);
 }

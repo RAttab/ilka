@@ -32,6 +32,7 @@ struct ilka_options
     size_t vma_reserved;
 
     size_t alloc_areas;
+    size_t epoch_slots;
     size_t epoch_gc_freq_usec;
 };
 

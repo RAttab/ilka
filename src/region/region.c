@@ -65,6 +65,7 @@ struct ilka_packed meta
     uint64_t magic;
     uint64_t version;
     ilka_off_t alloc;
+    ilka_off_t epoch;
     ilka_off_t root;
 };
 
